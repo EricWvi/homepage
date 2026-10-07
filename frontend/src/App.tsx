@@ -1,7 +1,8 @@
-import { FolderTreeIcon, PencilIcon, PlusIcon, Trash2Icon } from "lucide-react";
+import { FolderTreeIcon, ImagesIcon, PencilIcon, PlusIcon, Trash2Icon } from "lucide-react";
 import { useState } from "react";
 
 import { ConfirmDialog } from "@/components/confirm-dialog";
+import { DomainsDialog } from "@/components/domains-dialog";
 import { GroupsDialog } from "@/components/groups-dialog";
 import { SiteDialog, type SiteDialogTarget } from "@/components/site-dialog";
 import { SiteGrid } from "@/components/site-grid";
@@ -22,6 +23,7 @@ export function App() {
   const [siteDialog, setSiteDialog] = useState<SiteDialogTarget>(null);
   const [deleting, setDeleting] = useState<Site | null>(null);
   const [groupsOpen, setGroupsOpen] = useState(false);
+  const [domainsOpen, setDomainsOpen] = useState(false);
 
   const isEmpty = snapshot !== null && snapshot.sites.length === 0 && snapshot.groups.length <= 1;
   const addSite = () => setSiteDialog({ site: null });
@@ -32,6 +34,7 @@ export function App() {
         actions={[
           { label: "添加网站", icon: PlusIcon, onClick: addSite },
           { label: "分组管理", icon: FolderTreeIcon, onClick: () => setGroupsOpen(true) },
+          { label: "图标管理", icon: ImagesIcon, onClick: () => setDomainsOpen(true) },
         ]}
       />
 
@@ -72,6 +75,7 @@ export function App() {
 
       <SiteDialog target={siteDialog} onClose={() => setSiteDialog(null)} />
       <GroupsDialog open={groupsOpen} onOpenChange={setGroupsOpen} />
+      <DomainsDialog open={domainsOpen} onOpenChange={setDomainsOpen} />
       <ConfirmDialog
         open={deleting !== null}
         title="删除网站"
