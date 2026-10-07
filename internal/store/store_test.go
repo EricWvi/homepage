@@ -118,6 +118,7 @@ func TestUsersCannotSeeOrTouchEachOthersData(t *testing.T) {
 	for name, err := range map[string]error{
 		"update site":   s.UpdateSite(ctx, bob, site.ID, SiteInput{Title: "x", URL: "x.com"}),
 		"delete site":   s.DeleteSite(ctx, bob, site.ID),
+		"move site":     s.MoveSite(ctx, bob, site.ID, 0),
 		"rename group":  s.RenameGroup(ctx, bob, group.ID, "x"),
 		"hide group":    s.SetGroupHiddenAtWork(ctx, bob, group.ID, true),
 		"delete group":  s.DeleteGroup(ctx, bob, group.ID),
@@ -167,7 +168,7 @@ func TestCreateSiteNormalizesURLAndRegistersDomain(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := Site{ID: site.ID, Title: "GitHub", URL: "https://GitHub.com/golang", Domain: "github.com", GroupID: defaultGroup(t, s, uid), Position: 1, Links: []SiteLink{}}
+	want := Site{ID: site.ID, Title: "GitHub", URL: "https://GitHub.com/golang", Domain: "github.com", GroupID: defaultGroup(t, s, uid), SortKey: "a0", Links: []SiteLink{}}
 	if !reflect.DeepEqual(site, want) {
 		t.Fatalf("site = %+v, want %+v", site, want)
 	}
@@ -324,6 +325,60 @@ func TestDeleteGroupMovesSitesToDefault(t *testing.T) {
 	}
 }
 
+func siteTitles(t *testing.T, s *Store, userID int64) []string {
+	t.Helper()
+	var titles []string
+	for _, st := range snapshot(t, s, userID).Sites {
+		titles = append(titles, st.Title)
+	}
+	return titles
+}
+
+func TestMoveSite(t *testing.T) {
+	s := openTest(t)
+	uid := newUser(t, s, "alice")
+	ctx := context.Background()
+	var ids []int64
+	for _, title := range []string{"a", "b", "c"} {
+		site, err := s.CreateSite(ctx, uid, SiteInput{Title: title, URL: title + ".com"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, site.ID)
+	}
+	a, b, c := ids[0], ids[1], ids[2]
+	other, _ := s.CreateGroup(ctx, uid, "g")
+	elsewhere, _ := s.CreateSite(ctx, uid, SiteInput{Title: "x", URL: "x.com", GroupID: other.ID})
+
+	for _, step := range []struct {
+		id, after int64
+		want      []string
+	}{
+		{c, 0, []string{"c", "a", "b", "x"}},
+		{a, b, []string{"c", "b", "a", "x"}},
+		{b, c, []string{"c", "b", "a", "x"}}, // already there
+		{c, a, []string{"b", "a", "c", "x"}},
+		{a, b, []string{"b", "a", "c", "x"}},
+		{c, b, []string{"b", "c", "a", "x"}},
+	} {
+		if err := s.MoveSite(ctx, uid, step.id, step.after); err != nil {
+			t.Fatal(err)
+		}
+		if got := siteTitles(t, s, uid); !slices.Equal(got, step.want) {
+			t.Fatalf("after moving %d behind %d: order = %v, want %v", step.id, step.after, got, step.want)
+		}
+	}
+
+	for name, after := range map[string]int64{"itself": a, "other group": elsewhere.ID, "missing": 999} {
+		if err := s.MoveSite(ctx, uid, a, after); !errors.Is(err, ErrInvalid) {
+			t.Errorf("%s: err = %v, want ErrInvalid", name, err)
+		}
+	}
+	if err := s.MoveSite(ctx, uid, 999, 0); !errors.Is(err, ErrNotFound) {
+		t.Errorf("missing site: err = %v, want ErrNotFound", err)
+	}
+}
+
 func TestDefaultGroupIsProtected(t *testing.T) {
 	s := openTest(t)
 	uid := newUser(t, s, "alice")
@@ -390,7 +445,7 @@ func TestUpdateSiteMovesToEndOfNewGroup(t *testing.T) {
 	}
 	snap := snapshot(t, s, uid)
 	last := snap.Sites[len(snap.Sites)-1]
-	if !reflect.DeepEqual(last, Site{ID: site.ID, Title: "moved", URL: "https://new.com", Domain: "new.com", GroupID: g.ID, Position: 2, Links: []SiteLink{}}) {
+	if !reflect.DeepEqual(last, Site{ID: site.ID, Title: "moved", URL: "https://new.com", Domain: "new.com", GroupID: g.ID, SortKey: "a1", Links: []SiteLink{}}) {
 		t.Fatalf("sites = %+v", snap.Sites)
 	}
 	if len(snap.Domains) != 3 {

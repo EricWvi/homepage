@@ -2,7 +2,7 @@ import type { Snapshot } from "@/lib/api";
 
 // The last snapshot is kept in localStorage so the page renders on the
 // very first frame, before (or without) any network request.
-const KEY = "homepage:snapshot:v5";
+const KEY = "homepage:snapshot:v6";
 // Set after an explicit sign-out so the page shows a "signed out" screen
 // instead of bouncing straight back through single sign-on.
 const SIGNED_OUT_KEY = "homepage:signed-out";

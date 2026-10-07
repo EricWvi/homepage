@@ -15,6 +15,7 @@ export function SiteTile({ site, icon }: { site: Site; icon: string | null | und
     <a
       href={site.url}
       title={`${site.title}\n${site.url}`}
+      draggable={false} // the grid's own drag reorders tiles
       className="group flex w-[88px] flex-col items-center gap-2 rounded-xl px-1 py-2 outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
     >
       <SiteIcon

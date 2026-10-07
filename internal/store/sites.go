@@ -7,6 +7,8 @@ import (
 	"net/url"
 	"strings"
 	"unicode/utf8"
+
+	"roci.dev/fracdex"
 )
 
 const (
@@ -67,15 +69,15 @@ func (s *Store) CreateSite(ctx context.Context, userID int64, in SiteInput) (Sit
 		if site.GroupID, err = resolveGroup(ctx, tx, userID, in.GroupID); err != nil {
 			return err
 		}
-		if site.Position, err = nextSitePosition(ctx, tx, userID, site.GroupID); err != nil {
+		if site.SortKey, err = nextSortKey(ctx, tx, userID, site.GroupID); err != nil {
 			return err
 		}
 		if err := ensureDomain(ctx, tx, userID, domain); err != nil {
 			return err
 		}
 		res, err := tx.ExecContext(ctx,
-			`INSERT INTO sites (user_id, title, url, domain, group_id, position) VALUES (?, ?, ?, ?, ?, ?)`,
-			userID, site.Title, site.URL, site.Domain, site.GroupID, site.Position)
+			`INSERT INTO sites (user_id, title, url, domain, group_id, sort_key) VALUES (?, ?, ?, ?, ?, ?)`,
+			userID, site.Title, site.URL, site.Domain, site.GroupID, site.SortKey)
 		if err != nil {
 			return err
 		}
@@ -95,9 +97,9 @@ func (s *Store) UpdateSite(ctx context.Context, userID, id int64, in SiteInput) 
 	}
 	return s.inTx(ctx, func(tx *sql.Tx) error {
 		var groupID int64
-		var position int
+		var sortKey string
 		err := tx.QueryRowContext(ctx,
-			`SELECT group_id, position FROM sites WHERE id = ? AND user_id = ?`, id, userID).Scan(&groupID, &position)
+			`SELECT group_id, sort_key FROM sites WHERE id = ? AND user_id = ?`, id, userID).Scan(&groupID, &sortKey)
 		if errors.Is(err, sql.ErrNoRows) {
 			return ErrNotFound
 		}
@@ -109,7 +111,7 @@ func (s *Store) UpdateSite(ctx context.Context, userID, id int64, in SiteInput) 
 			return err
 		}
 		if target != groupID {
-			if position, err = nextSitePosition(ctx, tx, userID, target); err != nil {
+			if sortKey, err = nextSortKey(ctx, tx, userID, target); err != nil {
 				return err
 			}
 		}
@@ -117,12 +119,57 @@ func (s *Store) UpdateSite(ctx context.Context, userID, id int64, in SiteInput) 
 			return err
 		}
 		_, err = tx.ExecContext(ctx,
-			`UPDATE sites SET title = ?, url = ?, domain = ?, group_id = ?, position = ? WHERE id = ?`,
-			in.Title, in.URL, domain, target, position, id)
+			`UPDATE sites SET title = ?, url = ?, domain = ?, group_id = ?, sort_key = ? WHERE id = ?`,
+			in.Title, in.URL, domain, target, sortKey, id)
 		if err != nil {
 			return err
 		}
 		return replaceLinks(ctx, tx, id, in.Links)
+	})
+}
+
+// MoveSite moves a site within its group to just after the site with id
+// after, or to the front when after is 0.
+func (s *Store) MoveSite(ctx context.Context, userID, id, after int64) error {
+	return s.inTx(ctx, func(tx *sql.Tx) error {
+		var groupID int64
+		err := tx.QueryRowContext(ctx,
+			`SELECT group_id FROM sites WHERE id = ? AND user_id = ?`, id, userID).Scan(&groupID)
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrNotFound
+		}
+		if err != nil {
+			return err
+		}
+		var lower string
+		if after != 0 {
+			if after == id {
+				return invalid("不能移动到自身之后")
+			}
+			err := tx.QueryRowContext(ctx,
+				`SELECT sort_key FROM sites WHERE id = ? AND user_id = ? AND group_id = ?`,
+				after, userID, groupID).Scan(&lower)
+			if errors.Is(err, sql.ErrNoRows) {
+				return invalid("只能在同一分组内移动")
+			}
+			if err != nil {
+				return err
+			}
+		}
+		var upper string
+		err = tx.QueryRowContext(ctx,
+			`SELECT COALESCE(MIN(sort_key), '') FROM sites
+			 WHERE user_id = ? AND group_id = ? AND id != ? AND sort_key > ?`,
+			userID, groupID, id, lower).Scan(&upper)
+		if err != nil {
+			return err
+		}
+		key, err := fracdex.KeyBetween(lower, upper)
+		if err != nil {
+			return err
+		}
+		_, err = tx.ExecContext(ctx, `UPDATE sites SET sort_key = ? WHERE id = ?`, key, id)
+		return err
 	})
 }
 
@@ -150,12 +197,22 @@ func resolveGroup(ctx context.Context, tx *sql.Tx, userID, groupID int64) (int64
 	return groupID, err
 }
 
-func nextSitePosition(ctx context.Context, tx *sql.Tx, userID, groupID int64) (int, error) {
-	var pos int
+// lastSortKey returns the key of the group's last site, or "" when it is empty.
+func lastSortKey(ctx context.Context, tx *sql.Tx, userID, groupID int64) (string, error) {
+	var key string
 	err := tx.QueryRowContext(ctx,
-		`SELECT COALESCE(MAX(position), 0) + 1 FROM sites WHERE user_id = ? AND group_id = ?`,
-		userID, groupID).Scan(&pos)
-	return pos, err
+		`SELECT COALESCE(MAX(sort_key), '') FROM sites WHERE user_id = ? AND group_id = ?`,
+		userID, groupID).Scan(&key)
+	return key, err
+}
+
+// nextSortKey returns a key that places a site at the end of the group.
+func nextSortKey(ctx context.Context, tx *sql.Tx, userID, groupID int64) (string, error) {
+	last, err := lastSortKey(ctx, tx, userID, groupID)
+	if err != nil {
+		return "", err
+	}
+	return fracdex.KeyBetween(last, "")
 }
 
 func ensureDomain(ctx context.Context, tx *sql.Tx, userID int64, domain string) error {

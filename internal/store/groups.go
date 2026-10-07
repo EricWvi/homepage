@@ -6,6 +6,8 @@ import (
 	"errors"
 	"strings"
 	"unicode/utf8"
+
+	"roci.dev/fracdex"
 )
 
 const maxNameLen = 100
@@ -84,12 +86,8 @@ func (s *Store) DeleteGroup(ctx context.Context, userID, id int64) error {
 		if err != nil {
 			return err
 		}
-		pos, err := nextSitePosition(ctx, tx, userID, defaultID)
-		if err != nil {
-			return err
-		}
 		rows, err := tx.QueryContext(ctx,
-			`SELECT id FROM sites WHERE user_id = ? AND group_id = ? ORDER BY position, id`, userID, id)
+			`SELECT id FROM sites WHERE user_id = ? AND group_id = ? ORDER BY sort_key, id`, userID, id)
 		if err != nil {
 			return err
 		}
@@ -106,9 +104,17 @@ func (s *Store) DeleteGroup(ctx context.Context, userID, id int64) error {
 		if err := rows.Err(); err != nil {
 			return err
 		}
+		last, err := lastSortKey(ctx, tx, userID, defaultID)
+		if err != nil {
+			return err
+		}
+		keys, err := fracdex.NKeysBetween(last, "", uint(len(siteIDs)))
+		if err != nil {
+			return err
+		}
 		for i, sid := range siteIDs {
 			if _, err := tx.ExecContext(ctx,
-				`UPDATE sites SET group_id = ?, position = ? WHERE id = ?`, defaultID, pos+i, sid); err != nil {
+				`UPDATE sites SET group_id = ?, sort_key = ? WHERE id = ?`, defaultID, keys[i], sid); err != nil {
 				return err
 			}
 		}

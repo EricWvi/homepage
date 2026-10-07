@@ -61,6 +61,7 @@ func New(st *store.Store, authn *auth.Service, web fs.FS, opts Options) (http.Ha
 
 	private.HandleFunc("POST /api/sites", s.createSite)
 	private.HandleFunc("PUT /api/sites/{id}", s.updateSite)
+	private.HandleFunc("PUT /api/sites/{id}/move", s.moveSite)
 	private.HandleFunc("DELETE /api/sites/{id}", s.deleteSite)
 
 	private.HandleFunc("POST /api/groups", s.createGroup)
@@ -114,6 +115,22 @@ func (s *server) updateSite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.respondSnapshot(w, r, s.store.UpdateSite(r.Context(), userID(r), id, in))
+}
+
+// moveSite places a site after another one in its group; an after of 0
+// moves it to the front.
+func (s *server) moveSite(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(w, r)
+	if !ok {
+		return
+	}
+	var in struct {
+		After int64 `json:"after"`
+	}
+	if !decode(w, r, &in) {
+		return
+	}
+	s.respondSnapshot(w, r, s.store.MoveSite(r.Context(), userID(r), id, in.After))
 }
 
 func (s *server) deleteSite(w http.ResponseWriter, r *http.Request) {

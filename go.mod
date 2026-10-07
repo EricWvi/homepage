@@ -10,6 +10,7 @@ require (
 	golang.org/x/oauth2 v0.37.0
 	gopkg.in/yaml.v3 v3.0.1
 	modernc.org/sqlite v1.60.1
+	roci.dev/fracdex v0.0.0-20241211175510-82d7df79e312
 )
 
 require (

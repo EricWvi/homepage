@@ -13,7 +13,8 @@ export type Site = {
   url: string;
   domain: string;
   groupId: number;
-  position: number;
+  /** Orders the sites of a group: a fractional index key, compared bytewise. */
+  sortKey: string;
   /** Other pages on the same domain, in the user's order. */
   links: SiteLink[];
 };
@@ -104,6 +105,8 @@ export const api = {
 
   createSite: (input: SiteInput) => request("POST", "/api/sites", input),
   updateSite: (id: number, input: SiteInput) => request("PUT", `/api/sites/${id}`, input),
+  /** Moves a site within its group to just after `after`, or to the front when null. */
+  moveSite: (id: number, after: number | null) => request("PUT", `/api/sites/${id}/move`, { after: after ?? 0 }),
   deleteSite: (id: number) => request("DELETE", `/api/sites/${id}`),
 
   createGroup: (name: string) => request("POST", "/api/groups", { name }),

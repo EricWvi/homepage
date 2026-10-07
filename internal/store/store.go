@@ -37,12 +37,14 @@ type Group struct {
 
 // Site is a saved link.
 type Site struct {
-	ID       int64  `json:"id"`
-	Title    string `json:"title"`
-	URL      string `json:"url"`
-	Domain   string `json:"domain"`
-	GroupID  int64  `json:"groupId"`
-	Position int    `json:"position"`
+	ID      int64  `json:"id"`
+	Title   string `json:"title"`
+	URL     string `json:"url"`
+	Domain  string `json:"domain"`
+	GroupID int64  `json:"groupId"`
+	// SortKey orders the sites of a group: a fractional index key that
+	// compares bytewise.
+	SortKey string `json:"sortKey"`
 	// Links are other pages on the same domain, in the user's order.
 	Links []SiteLink `json:"links"`
 }
@@ -139,15 +141,15 @@ func (s *Store) Snapshot(ctx context.Context, userID int64) (Snapshot, error) {
 	rows.Close()
 
 	rows, err = s.db.QueryContext(ctx,
-		`SELECT id, title, url, domain, group_id, position FROM sites
-		 WHERE user_id = ? ORDER BY group_id, position, id`, userID)
+		`SELECT id, title, url, domain, group_id, sort_key FROM sites
+		 WHERE user_id = ? ORDER BY group_id, sort_key, id`, userID)
 	if err != nil {
 		return snap, err
 	}
 	siteIndex := map[int64]int{}
 	for rows.Next() {
 		st := Site{Links: []SiteLink{}}
-		if err := rows.Scan(&st.ID, &st.Title, &st.URL, &st.Domain, &st.GroupID, &st.Position); err != nil {
+		if err := rows.Scan(&st.ID, &st.Title, &st.URL, &st.Domain, &st.GroupID, &st.SortKey); err != nil {
 			rows.Close()
 			return snap, err
 		}

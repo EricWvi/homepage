@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 
 import { api, ApiError, logout, type Snapshot } from "@/lib/api";
@@ -19,9 +19,13 @@ type SnapshotContext = {
   signedOut: boolean;
   /**
    * Runs a mutation and adopts the snapshot it returns. Resolves false on
-   * failure, which is reported in a toast unless `silent`.
+   * failure, which is reported in a toast unless `silent`. An `optimistic`
+   * snapshot is shown meanwhile and rolled back if the mutation fails.
    */
-  mutate: (action: () => Promise<Snapshot>, options?: { silent?: boolean }) => Promise<boolean>;
+  mutate: (
+    action: () => Promise<Snapshot>,
+    options?: { silent?: boolean; optimistic?: Snapshot },
+  ) => Promise<boolean>;
   signIn: () => void;
   signOut: () => Promise<void>;
 };
@@ -33,6 +37,8 @@ const goToLogin = () => window.location.assign("/auth/login");
 export function SnapshotProvider({ children }: { children: ReactNode }) {
   const [signedOut, setSignedOutState] = useState(isSignedOut);
   const [snapshot, setSnapshot] = useState<Snapshot | null>(() => (signedOut ? null : readCachedSnapshot()));
+  const latest = useRef(snapshot);
+  latest.current = snapshot;
 
   // Every snapshot adopted here is fresh from the server.
   const adopt = useCallback((snap: Snapshot) => {
@@ -77,11 +83,14 @@ export function SnapshotProvider({ children }: { children: ReactNode }) {
   }, [adopt, unauthorized, signedOut]);
 
   const mutate = useCallback(
-    async (action: () => Promise<Snapshot>, { silent = false } = {}) => {
+    async (action: () => Promise<Snapshot>, { silent = false, optimistic }: { silent?: boolean; optimistic?: Snapshot } = {}) => {
+      const before = latest.current;
+      if (optimistic) setSnapshot(optimistic);
       try {
         adopt(await action());
         return true;
       } catch (err) {
+        if (optimistic) setSnapshot((current) => (current === optimistic ? before : current));
         if (err instanceof ApiError && err.status === 401) {
           unauthorized();
           return false;

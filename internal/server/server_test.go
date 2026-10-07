@@ -149,6 +149,20 @@ func TestValidationErrorsAreReadable(t *testing.T) {
 	}
 }
 
+func TestMoveSite(t *testing.T) {
+	h := newTest(t)
+	decodeSnapshot(t, do(t, h, "POST", "/api/sites", `{"title":"a","url":"a.com"}`))
+	snap := decodeSnapshot(t, do(t, h, "POST", "/api/sites", `{"title":"b","url":"b.com"}`))
+	b := snap.Sites[1].ID
+	snap = decodeSnapshot(t, do(t, h, "PUT", "/api/sites/"+itoa(b)+"/move", `{"after":0}`))
+	if snap.Sites[0].Title != "b" || snap.Sites[0].SortKey >= snap.Sites[1].SortKey {
+		t.Fatalf("sites = %+v", snap.Sites)
+	}
+	if rec := do(t, h, "PUT", "/api/sites/"+itoa(b)+"/move", `{"after":`+itoa(b)+`}`); rec.Code != http.StatusBadRequest {
+		t.Fatalf("moving after itself: status = %d", rec.Code)
+	}
+}
+
 func TestGroups(t *testing.T) {
 	h := newTest(t)
 	decodeSnapshot(t, do(t, h, "POST", "/api/groups", `{"name":"a"}`))
