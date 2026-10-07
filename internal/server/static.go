@@ -21,7 +21,7 @@ type staticFile struct {
 // static serves the built frontend from memory.
 //
 // Vite emits content-hashed files under assets/, which are cached forever.
-// Everything else (index.html, sw.js, manifest) must be revalidated so a new
+// Everything else (index.html, sw.js, favicon) must be revalidated so a new
 // release is picked up; the service worker handles offline use.
 type static struct {
 	files map[string]staticFile

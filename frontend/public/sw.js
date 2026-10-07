@@ -13,7 +13,7 @@ const SHELL = `shell-${CACHE_VERSION}`;
 const ASSETS = `assets-${CACHE_VERSION}`;
 const ICONS = `icons-${CACHE_VERSION}`;
 const SHELL_URL = "/";
-const STATIC_FILES = ["/favicon.svg", "/manifest.webmanifest"];
+const STATIC_FILES = ["/favicon.svg"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(updateShell().then(() => self.skipWaiting()));
