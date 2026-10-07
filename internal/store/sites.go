@@ -14,7 +14,8 @@ const (
 	maxURLLen   = 2048
 )
 
-// SiteInput is the user-editable part of a site.
+// SiteInput is the user-editable part of a site. A zero GroupID means the
+// user's default group.
 type SiteInput struct {
 	Title   string `json:"title"`
 	URL     string `json:"url"`
@@ -45,33 +46,30 @@ func (in SiteInput) normalize() (SiteInput, string, error) {
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" {
 		return in, "", invalid("链接格式不正确")
 	}
-	if in.GroupID == 0 {
-		in.GroupID = DefaultGroupID
-	}
 	return in, strings.ToLower(u.Hostname()), nil
 }
 
 // CreateSite appends a site to its group and registers its domain if the
-// domain is new.
-func (s *Store) CreateSite(ctx context.Context, in SiteInput) (Site, error) {
+// domain is new to the user.
+func (s *Store) CreateSite(ctx context.Context, userID int64, in SiteInput) (Site, error) {
 	in, domain, err := in.normalize()
 	if err != nil {
 		return Site{}, err
 	}
-	site := Site{Title: in.Title, URL: in.URL, Domain: domain, GroupID: in.GroupID}
+	site := Site{Title: in.Title, URL: in.URL, Domain: domain}
 	err = s.inTx(ctx, func(tx *sql.Tx) error {
-		if err := checkGroup(ctx, tx, in.GroupID); err != nil {
+		if site.GroupID, err = resolveGroup(ctx, tx, userID, in.GroupID); err != nil {
 			return err
 		}
-		if site.Position, err = nextSitePosition(ctx, tx, in.GroupID); err != nil {
+		if site.Position, err = nextSitePosition(ctx, tx, userID, site.GroupID); err != nil {
 			return err
 		}
-		if err := ensureDomain(ctx, tx, domain); err != nil {
+		if err := ensureDomain(ctx, tx, userID, domain); err != nil {
 			return err
 		}
 		res, err := tx.ExecContext(ctx,
-			`INSERT INTO sites (title, url, domain, group_id, position) VALUES (?, ?, ?, ?, ?)`,
-			site.Title, site.URL, site.Domain, site.GroupID, site.Position)
+			`INSERT INTO sites (user_id, title, url, domain, group_id, position) VALUES (?, ?, ?, ?, ?, ?)`,
+			userID, site.Title, site.URL, site.Domain, site.GroupID, site.Position)
 		if err != nil {
 			return err
 		}
@@ -82,7 +80,7 @@ func (s *Store) CreateSite(ctx context.Context, in SiteInput) (Site, error) {
 }
 
 // UpdateSite edits a site. Moving it to another group appends it there.
-func (s *Store) UpdateSite(ctx context.Context, id int64, in SiteInput) error {
+func (s *Store) UpdateSite(ctx context.Context, userID, id int64, in SiteInput) error {
 	in, domain, err := in.normalize()
 	if err != nil {
 		return err
@@ -91,56 +89,66 @@ func (s *Store) UpdateSite(ctx context.Context, id int64, in SiteInput) error {
 		var groupID int64
 		var position int
 		err := tx.QueryRowContext(ctx,
-			`SELECT group_id, position FROM sites WHERE id = ?`, id).Scan(&groupID, &position)
+			`SELECT group_id, position FROM sites WHERE id = ? AND user_id = ?`, id, userID).Scan(&groupID, &position)
 		if errors.Is(err, sql.ErrNoRows) {
 			return ErrNotFound
 		}
 		if err != nil {
 			return err
 		}
-		if in.GroupID != groupID {
-			if err := checkGroup(ctx, tx, in.GroupID); err != nil {
-				return err
-			}
-			if position, err = nextSitePosition(ctx, tx, in.GroupID); err != nil {
+		target, err := resolveGroup(ctx, tx, userID, in.GroupID)
+		if err != nil {
+			return err
+		}
+		if target != groupID {
+			if position, err = nextSitePosition(ctx, tx, userID, target); err != nil {
 				return err
 			}
 		}
-		if err := ensureDomain(ctx, tx, domain); err != nil {
+		if err := ensureDomain(ctx, tx, userID, domain); err != nil {
 			return err
 		}
 		_, err = tx.ExecContext(ctx,
 			`UPDATE sites SET title = ?, url = ?, domain = ?, group_id = ?, position = ? WHERE id = ?`,
-			in.Title, in.URL, domain, in.GroupID, position, id)
+			in.Title, in.URL, domain, target, position, id)
 		return err
 	})
 }
 
 // DeleteSite removes a site. Its domain and icon are kept.
-func (s *Store) DeleteSite(ctx context.Context, id int64) error {
-	res, err := s.db.ExecContext(ctx, `DELETE FROM sites WHERE id = ?`, id)
+func (s *Store) DeleteSite(ctx context.Context, userID, id int64) error {
+	res, err := s.db.ExecContext(ctx, `DELETE FROM sites WHERE id = ? AND user_id = ?`, id, userID)
 	if err != nil {
 		return err
 	}
 	return requireAffected(res)
 }
 
-func checkGroup(ctx context.Context, tx *sql.Tx, id int64) error {
-	err := groupExists(ctx, tx, id)
-	if errors.Is(err, ErrNotFound) {
-		return invalid("分组不存在")
+// resolveGroup maps a requested group id to one the user owns; 0 selects
+// the default group.
+func resolveGroup(ctx context.Context, tx *sql.Tx, userID, groupID int64) (int64, error) {
+	if groupID == 0 {
+		return defaultGroupID(ctx, tx, userID)
 	}
-	return err
+	var one int
+	err := tx.QueryRowContext(ctx,
+		`SELECT 1 FROM site_groups WHERE id = ? AND user_id = ?`, groupID, userID).Scan(&one)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, invalid("分组不存在")
+	}
+	return groupID, err
 }
 
-func nextSitePosition(ctx context.Context, tx *sql.Tx, groupID int64) (int, error) {
+func nextSitePosition(ctx context.Context, tx *sql.Tx, userID, groupID int64) (int, error) {
 	var pos int
 	err := tx.QueryRowContext(ctx,
-		`SELECT COALESCE(MAX(position), 0) + 1 FROM sites WHERE group_id = ?`, groupID).Scan(&pos)
+		`SELECT COALESCE(MAX(position), 0) + 1 FROM sites WHERE user_id = ? AND group_id = ?`,
+		userID, groupID).Scan(&pos)
 	return pos, err
 }
 
-func ensureDomain(ctx context.Context, tx *sql.Tx, domain string) error {
-	_, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO domains (domain) VALUES (?)`, domain)
+func ensureDomain(ctx context.Context, tx *sql.Tx, userID int64, domain string) error {
+	_, err := tx.ExecContext(ctx,
+		`INSERT OR IGNORE INTO domains (user_id, domain) VALUES (?, ?)`, userID, domain)
 	return err
 }

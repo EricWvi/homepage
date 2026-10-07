@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -9,45 +10,83 @@ import (
 	"testing"
 	"testing/fstest"
 
+	"homepage/internal/auth"
 	"homepage/internal/store"
 )
 
 var pngHeader = []byte("\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR")
 
-func newTest(t *testing.T) http.Handler {
+const origin = "https://home.test"
+
+// testServer is the handler plus a store for minting sessions.
+type testServer struct {
+	http.Handler
+	store *store.Store
+	// session is sent as the cookie on every request made with do.
+	session string
+}
+
+func newTest(t *testing.T) *testServer {
 	t.Helper()
 	st, err := store.Open(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { st.Close() })
+	// The provider is discovered lazily, so these tests never reach it.
+	authn := auth.New(st, auth.Config{PublicURL: origin, Issuer: "https://idp.invalid", ClientID: "x", ClientSecret: "y"})
 	web := fstest.MapFS{
 		"index.html":        {Data: []byte("<!doctype html><title>home</title>")},
 		"assets/app-abc.js": {Data: []byte("console.log(1)")},
 		"sw.js":             {Data: []byte("self.addEventListener('fetch',()=>{})")},
 		".gitkeep":          {Data: nil},
 	}
-	h, err := New(st, web, "test")
+	h, err := New(st, authn, web, "test")
 	if err != nil {
 		t.Fatal(err)
 	}
-	return h
+	ts := &testServer{Handler: h, store: st}
+	ts.session = ts.signIn(t, "alice")
+	return ts
 }
 
-func do(t *testing.T, h http.Handler, method, path, body string) *httptest.ResponseRecorder {
+// signIn creates a user and returns a session token for it.
+func (ts *testServer) signIn(t *testing.T, subject string) string {
+	t.Helper()
+	ctx := context.Background()
+	u, err := ts.store.UpsertUser(ctx, store.Identity{Issuer: "https://idp.test", Subject: subject, Name: subject})
+	if err != nil {
+		t.Fatal(err)
+	}
+	token, err := ts.store.CreateSession(ctx, u.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return token
+}
+
+func do(t *testing.T, ts *testServer, method, path, body string) *httptest.ResponseRecorder {
 	t.Helper()
 	req := httptest.NewRequest(method, path, strings.NewReader(body))
+	if ts.session != "" {
+		req.AddCookie(&http.Cookie{Name: "homepage_session", Value: ts.session})
+	}
 	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, req)
+	ts.ServeHTTP(rec, req)
 	return rec
 }
 
-func decodeSnapshot(t *testing.T, rec *httptest.ResponseRecorder) store.Snapshot {
+type snapshotBody struct {
+	store.Snapshot
+	User store.User `json:"user"`
+}
+
+func decodeSnapshot(t *testing.T, rec *httptest.ResponseRecorder) snapshotBody {
 	t.Helper()
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body)
 	}
-	var snap store.Snapshot
+	var snap snapshotBody
 	if err := json.Unmarshal(rec.Body.Bytes(), &snap); err != nil {
 		t.Fatal(err)
 	}
@@ -67,9 +106,12 @@ func TestSiteLifecycle(t *testing.T) {
 	if len(snap.Sites) != 1 || snap.Sites[0].Domain != "go.dev" || len(snap.Domains) != 1 {
 		t.Fatalf("snapshot = %+v", snap)
 	}
+	if snap.User != (store.User{Name: "alice"}) {
+		t.Fatalf("user = %+v", snap.User)
+	}
 	id := snap.Sites[0].ID
 
-	snap = decodeSnapshot(t, do(t, h, "PUT", "/api/sites/"+itoa(id), `{"title":"Golang","url":"https://go.dev","groupId":1}`))
+	snap = decodeSnapshot(t, do(t, h, "PUT", "/api/sites/"+itoa(id), `{"title":"Golang","url":"https://go.dev"}`))
 	if snap.Sites[0].Title != "Golang" {
 		t.Fatalf("sites = %+v", snap.Sites)
 	}
@@ -114,7 +156,7 @@ func TestGroups(t *testing.T) {
 	if len(snap.Groups) != 2 {
 		t.Fatalf("groups = %+v", snap.Groups)
 	}
-	if rec := do(t, h, "DELETE", "/api/groups/1", ""); rec.Code != http.StatusBadRequest {
+	if rec := do(t, h, "DELETE", "/api/groups/"+itoa(snap.Groups[0].ID), ""); rec.Code != http.StatusBadRequest {
 		t.Fatalf("deleting default group: status = %d", rec.Code)
 	}
 }
@@ -133,7 +175,7 @@ func TestDomainIconUploadAndServe(t *testing.T) {
 	if rec.Code != http.StatusOK || !bytes.Equal(rec.Body.Bytes(), pngHeader) {
 		t.Fatalf("status = %d", rec.Code)
 	}
-	if cc := rec.Header().Get("Cache-Control"); cc != "public, max-age=31536000, immutable" {
+	if cc := rec.Header().Get("Cache-Control"); cc != "private, max-age=31536000, immutable" {
 		t.Fatalf("Cache-Control = %q", cc)
 	}
 
@@ -157,6 +199,7 @@ func TestDomainIconUploadAndServe(t *testing.T) {
 
 func TestStaticCaching(t *testing.T) {
 	h := newTest(t)
+	h.session = "" // the app shell must load without signing in
 	for _, tc := range []struct {
 		path, cache string
 		code        int
@@ -187,4 +230,85 @@ func TestStaticCaching(t *testing.T) {
 func itoa(n int64) string {
 	b, _ := json.Marshal(n)
 	return string(b)
+}
+
+func TestAPIAndIconsRequireSession(t *testing.T) {
+	h := newTest(t)
+	snap := decodeSnapshot(t, do(t, h, "POST", "/api/sites", `{"title":"Go","url":"go.dev"}`))
+	snap = decodeSnapshot(t, do(t, h, "PUT", "/api/domains/go.dev/icon", string(pngHeader)))
+	icon := "/icons/" + *snap.Domains[0].Icon
+
+	for _, session := range []string{"", "forged-token"} {
+		h.session = session
+		for _, path := range []string{"/api/snapshot", "/api/nope", icon} {
+			if rec := do(t, h, "GET", path, ""); rec.Code != http.StatusUnauthorized {
+				t.Errorf("session %q, GET %s: status = %d", session, path, rec.Code)
+			}
+		}
+	}
+	h.session = ""
+	if rec := do(t, h, "GET", "/api/version", ""); rec.Code != http.StatusOK {
+		t.Errorf("version: status = %d", rec.Code)
+	}
+}
+
+func TestUsersHaveSeparateData(t *testing.T) {
+	h := newTest(t)
+	decodeSnapshot(t, do(t, h, "POST", "/api/sites", `{"title":"Go","url":"go.dev"}`))
+	alice := h.session
+
+	h.session = h.signIn(t, "bob")
+	snap := decodeSnapshot(t, do(t, h, "GET", "/api/snapshot", ""))
+	if len(snap.Sites) != 0 || len(snap.Domains) != 0 || len(snap.Groups) != 1 || snap.User.Name != "bob" {
+		t.Fatalf("bob sees %+v", snap)
+	}
+
+	h.session = alice
+	if snap := decodeSnapshot(t, do(t, h, "GET", "/api/snapshot", "")); len(snap.Sites) != 1 {
+		t.Fatalf("alice sees %+v", snap)
+	}
+}
+
+func TestCrossOriginWritesAreRejected(t *testing.T) {
+	h := newTest(t)
+	for _, tc := range []struct {
+		origin string
+		code   int
+	}{
+		{"https://evil.test", http.StatusForbidden},
+		{"https://other.home.test", http.StatusForbidden},
+		{origin, http.StatusOK},
+		{"", http.StatusOK},
+	} {
+		req := httptest.NewRequest("POST", "/api/groups", strings.NewReader(`{"name":"g"}`))
+		req.AddCookie(&http.Cookie{Name: "homepage_session", Value: h.session})
+		if tc.origin != "" {
+			req.Header.Set("Origin", tc.origin)
+		}
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if rec.Code != tc.code {
+			t.Errorf("Origin %q: status = %d, want %d", tc.origin, rec.Code, tc.code)
+		}
+	}
+}
+
+func TestLogoutEndsOnlyThisSession(t *testing.T) {
+	h := newTest(t)
+	other := h.signIn(t, "alice") // same user, another browser
+
+	rec := do(t, h, "POST", "/auth/logout", "")
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("logout: status = %d", rec.Code)
+	}
+	if c := rec.Result().Cookies(); len(c) != 1 || c[0].Name != "homepage_session" || c[0].MaxAge >= 0 {
+		t.Fatalf("logout cookies = %+v", c)
+	}
+	if rec := do(t, h, "GET", "/api/snapshot", ""); rec.Code != http.StatusUnauthorized {
+		t.Fatalf("after logout: status = %d", rec.Code)
+	}
+	h.session = other
+	if rec := do(t, h, "GET", "/api/snapshot", ""); rec.Code != http.StatusOK {
+		t.Fatalf("other browser: status = %d", rec.Code)
+	}
 }

@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 
+	"homepage/internal/auth"
 	"homepage/internal/store"
 )
 
@@ -23,8 +24,10 @@ type server struct {
 	version string
 }
 
-// New returns the HTTP handler for the API, icons and the frontend in web.
-func New(st *store.Store, web fs.FS, version string) (http.Handler, error) {
+// New returns the HTTP handler for auth, the API, icons and the frontend
+// in web. The API and icons require a signed-in user; the app shell does
+// not, so it can load offline and send the user to the login page.
+func New(st *store.Store, authn *auth.Service, web fs.FS, version string) (http.Handler, error) {
 	s := &server{store: st, version: version}
 	static, err := newStatic(web)
 	if err != nil {
@@ -33,28 +36,37 @@ func New(st *store.Store, web fs.FS, version string) (http.Handler, error) {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/version", s.getVersion)
-	mux.HandleFunc("GET /api/snapshot", s.getSnapshot)
+	authn.Register(mux)
 
-	mux.HandleFunc("POST /api/sites", s.createSite)
-	mux.HandleFunc("PUT /api/sites/{id}", s.updateSite)
-	mux.HandleFunc("DELETE /api/sites/{id}", s.deleteSite)
+	// Everything registered on private is only reachable with a session.
+	private := http.NewServeMux()
+	mux.Handle("/api/", authn.Require(private))
+	mux.Handle("/icons/", authn.Require(private))
+	mux.Handle("/", static)
 
-	mux.HandleFunc("POST /api/groups", s.createGroup)
-	mux.HandleFunc("PUT /api/groups/order", s.reorderGroups)
-	mux.HandleFunc("PUT /api/groups/{id}", s.renameGroup)
-	mux.HandleFunc("DELETE /api/groups/{id}", s.deleteGroup)
+	private.HandleFunc("GET /api/snapshot", s.getSnapshot)
 
-	mux.HandleFunc("PUT /api/domains/{domain}/icon", s.setDomainIcon)
-	mux.HandleFunc("DELETE /api/domains/{domain}/icon", s.clearDomainIcon)
-	mux.HandleFunc("DELETE /api/domains/{domain}", s.deleteDomain)
+	private.HandleFunc("POST /api/sites", s.createSite)
+	private.HandleFunc("PUT /api/sites/{id}", s.updateSite)
+	private.HandleFunc("DELETE /api/sites/{id}", s.deleteSite)
 
-	mux.HandleFunc("GET /icons/{name}", s.getIcon)
-	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
+	private.HandleFunc("POST /api/groups", s.createGroup)
+	private.HandleFunc("PUT /api/groups/order", s.reorderGroups)
+	private.HandleFunc("PUT /api/groups/{id}", s.renameGroup)
+	private.HandleFunc("DELETE /api/groups/{id}", s.deleteGroup)
+
+	private.HandleFunc("PUT /api/domains/{domain}/icon", s.setDomainIcon)
+	private.HandleFunc("DELETE /api/domains/{domain}/icon", s.clearDomainIcon)
+	private.HandleFunc("DELETE /api/domains/{domain}", s.deleteDomain)
+
+	private.HandleFunc("GET /icons/{name}", s.getIcon)
+	private.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "接口不存在")
 	})
-	mux.Handle("/", static)
 	return mux, nil
 }
+
+func userID(r *http.Request) int64 { return auth.User(r.Context()).ID }
 
 func (s *server) getVersion(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"version": s.version})
@@ -69,7 +81,7 @@ func (s *server) createSite(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &in) {
 		return
 	}
-	_, err := s.store.CreateSite(r.Context(), in)
+	_, err := s.store.CreateSite(r.Context(), userID(r), in)
 	s.respondSnapshot(w, r, err)
 }
 
@@ -82,7 +94,7 @@ func (s *server) updateSite(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &in) {
 		return
 	}
-	s.respondSnapshot(w, r, s.store.UpdateSite(r.Context(), id, in))
+	s.respondSnapshot(w, r, s.store.UpdateSite(r.Context(), userID(r), id, in))
 }
 
 func (s *server) deleteSite(w http.ResponseWriter, r *http.Request) {
@@ -90,7 +102,7 @@ func (s *server) deleteSite(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	s.respondSnapshot(w, r, s.store.DeleteSite(r.Context(), id))
+	s.respondSnapshot(w, r, s.store.DeleteSite(r.Context(), userID(r), id))
 }
 
 type groupInput struct {
@@ -102,7 +114,7 @@ func (s *server) createGroup(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &in) {
 		return
 	}
-	_, err := s.store.CreateGroup(r.Context(), in.Name)
+	_, err := s.store.CreateGroup(r.Context(), userID(r), in.Name)
 	s.respondSnapshot(w, r, err)
 }
 
@@ -115,7 +127,7 @@ func (s *server) renameGroup(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &in) {
 		return
 	}
-	s.respondSnapshot(w, r, s.store.RenameGroup(r.Context(), id, in.Name))
+	s.respondSnapshot(w, r, s.store.RenameGroup(r.Context(), userID(r), id, in.Name))
 }
 
 func (s *server) deleteGroup(w http.ResponseWriter, r *http.Request) {
@@ -123,7 +135,7 @@ func (s *server) deleteGroup(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	s.respondSnapshot(w, r, s.store.DeleteGroup(r.Context(), id))
+	s.respondSnapshot(w, r, s.store.DeleteGroup(r.Context(), userID(r), id))
 }
 
 func (s *server) reorderGroups(w http.ResponseWriter, r *http.Request) {
@@ -133,7 +145,7 @@ func (s *server) reorderGroups(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &in) {
 		return
 	}
-	s.respondSnapshot(w, r, s.store.ReorderGroups(r.Context(), in.IDs))
+	s.respondSnapshot(w, r, s.store.ReorderGroups(r.Context(), userID(r), in.IDs))
 }
 
 // setDomainIcon takes the raw image bytes as the request body.
@@ -148,20 +160,21 @@ func (s *server) setDomainIcon(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "读取上传内容失败")
 		return
 	}
-	_, err = s.store.SetDomainIcon(r.Context(), r.PathValue("domain"), data)
+	_, err = s.store.SetDomainIcon(r.Context(), userID(r), r.PathValue("domain"), data)
 	s.respondSnapshot(w, r, err)
 }
 
 func (s *server) clearDomainIcon(w http.ResponseWriter, r *http.Request) {
-	s.respondSnapshot(w, r, s.store.ClearDomainIcon(r.Context(), r.PathValue("domain")))
+	s.respondSnapshot(w, r, s.store.ClearDomainIcon(r.Context(), userID(r), r.PathValue("domain")))
 }
 
 func (s *server) deleteDomain(w http.ResponseWriter, r *http.Request) {
-	s.respondSnapshot(w, r, s.store.DeleteDomain(r.Context(), r.PathValue("domain")))
+	s.respondSnapshot(w, r, s.store.DeleteDomain(r.Context(), userID(r), r.PathValue("domain")))
 }
 
 // getIcon serves an uploaded icon. Names are content hashes, so the
-// response never changes and may be cached for a year.
+// response never changes and may be cached for a year. It is private
+// because it requires a session.
 func (s *server) getIcon(w http.ResponseWriter, r *http.Request) {
 	path, err := s.store.IconPath(r.PathValue("name"))
 	if err != nil {
@@ -169,11 +182,17 @@ func (s *server) getIcon(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h := w.Header()
-	h.Set("Cache-Control", "public, max-age=31536000, immutable")
+	h.Set("Cache-Control", "private, max-age=31536000, immutable")
 	h.Set("X-Content-Type-Options", "nosniff")
 	// Uploaded SVGs may contain scripts; never let them run.
 	h.Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; sandbox")
 	http.ServeFile(w, r, path)
+}
+
+// snapshotResponse is the user's state plus who they are.
+type snapshotResponse struct {
+	store.Snapshot
+	User store.User `json:"user"`
 }
 
 // respondSnapshot reports err, or on success returns the full current
@@ -183,13 +202,14 @@ func (s *server) respondSnapshot(w http.ResponseWriter, r *http.Request, err err
 		writeStoreError(w, r, err)
 		return
 	}
-	snap, err := s.store.Snapshot(r.Context())
+	user := auth.User(r.Context())
+	snap, err := s.store.Snapshot(r.Context(), user.ID)
 	if err != nil {
 		writeStoreError(w, r, err)
 		return
 	}
 	w.Header().Set("Cache-Control", "no-store")
-	writeJSON(w, http.StatusOK, snap)
+	writeJSON(w, http.StatusOK, snapshotResponse{Snapshot: snap, User: user})
 }
 
 func writeStoreError(w http.ResponseWriter, r *http.Request, err error) {

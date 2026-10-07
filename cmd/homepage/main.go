@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"homepage"
+	"homepage/internal/auth"
 	"homepage/internal/config"
 	"homepage/internal/server"
 	"homepage/internal/store"
@@ -51,7 +52,17 @@ func run(configPath string) error {
 	}
 	defer st.Close()
 
-	handler, err := server.New(st, homepage.Frontend(), version)
+	if cfg.DevUser != "" {
+		slog.Warn("dev_user is set: OIDC is disabled and every request is signed in as this user", "user", cfg.DevUser)
+	}
+	authn := auth.New(st, auth.Config{
+		PublicURL:    cfg.PublicURL,
+		Issuer:       cfg.OIDC.Issuer,
+		ClientID:     cfg.OIDC.ClientID,
+		ClientSecret: cfg.OIDC.ClientSecret,
+		DevUser:      cfg.DevUser,
+	})
+	handler, err := server.New(st, authn, homepage.Frontend(), version)
 	if err != nil {
 		return err
 	}

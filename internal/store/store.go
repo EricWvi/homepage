@@ -15,10 +15,6 @@ import (
 	_ "modernc.org/sqlite" // CGO-free SQLite driver
 )
 
-// DefaultGroupID is the id of the built-in group that has no title and
-// always sits at the top of the page.
-const DefaultGroupID int64 = 1
-
 var (
 	// ErrNotFound reports a missing group, site or domain.
 	ErrNotFound = errors.New("not found")
@@ -28,7 +24,8 @@ var (
 	ErrConflict = errors.New("conflict")
 )
 
-// Group is a section of the page. The default group has no title.
+// Group is a section of the page. Every user has exactly one default
+// group, which has no title and always sits at the top.
 type Group struct {
 	ID        int64  `json:"id"`
 	Name      string `json:"name"`
@@ -62,7 +59,8 @@ type Snapshot struct {
 	Domains []Domain `json:"domains"`
 }
 
-// Store is safe for concurrent use.
+// Store is safe for concurrent use. Every query on groups, sites and
+// domains is scoped to one user.
 type Store struct {
 	db      *sql.DB
 	iconDir string
@@ -92,12 +90,13 @@ func Open(dataDir string) (*Store, error) {
 // Close closes the database.
 func (s *Store) Close() error { return s.db.Close() }
 
-// Snapshot returns all groups, sites and domains in display order.
-func (s *Store) Snapshot(ctx context.Context) (Snapshot, error) {
+// Snapshot returns the user's groups, sites and domains in display order.
+func (s *Store) Snapshot(ctx context.Context, userID int64) (Snapshot, error) {
 	snap := Snapshot{Groups: []Group{}, Sites: []Site{}, Domains: []Domain{}}
 
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, name, is_default, position FROM site_groups ORDER BY is_default DESC, position, id`)
+		`SELECT id, name, is_default, position FROM site_groups
+		 WHERE user_id = ? ORDER BY is_default DESC, position, id`, userID)
 	if err != nil {
 		return snap, err
 	}
@@ -112,7 +111,8 @@ func (s *Store) Snapshot(ctx context.Context) (Snapshot, error) {
 	rows.Close()
 
 	rows, err = s.db.QueryContext(ctx,
-		`SELECT id, title, url, domain, group_id, position FROM sites ORDER BY group_id, position, id`)
+		`SELECT id, title, url, domain, group_id, position FROM sites
+		 WHERE user_id = ? ORDER BY group_id, position, id`, userID)
 	if err != nil {
 		return snap, err
 	}
@@ -128,8 +128,9 @@ func (s *Store) Snapshot(ctx context.Context) (Snapshot, error) {
 
 	rows, err = s.db.QueryContext(ctx, `
 		SELECT d.domain, d.icon, COUNT(s.id)
-		FROM domains d LEFT JOIN sites s ON s.domain = d.domain
-		GROUP BY d.domain ORDER BY d.domain`)
+		FROM domains d LEFT JOIN sites s ON s.user_id = d.user_id AND s.domain = d.domain
+		WHERE d.user_id = ?
+		GROUP BY d.domain ORDER BY d.domain`, userID)
 	if err != nil {
 		return snap, err
 	}

@@ -18,9 +18,10 @@ import (
 // iconName matches the file names produced by SetDomainIcon.
 var iconName = regexp.MustCompile(`^[0-9a-f]{16}\.(png|jpg|gif|webp|ico|svg)$`)
 
-// SetDomainIcon stores data as the icon for domain. The file is named after
-// a hash of its content, so a changed icon always gets a new URL.
-func (s *Store) SetDomainIcon(ctx context.Context, domain string, data []byte) (string, error) {
+// SetDomainIcon stores data as the icon for one of the user's domains. The
+// file is named after a hash of its content, so a changed icon always gets
+// a new URL. Identical files are shared between domains and users.
+func (s *Store) SetDomainIcon(ctx context.Context, userID int64, domain string, data []byte) (string, error) {
 	ext, err := iconExt(data)
 	if err != nil {
 		return "", err
@@ -32,14 +33,16 @@ func (s *Store) SetDomainIcon(ctx context.Context, domain string, data []byte) (
 	}
 	var old sql.NullString
 	err = s.inTx(ctx, func(tx *sql.Tx) error {
-		err := tx.QueryRowContext(ctx, `SELECT icon FROM domains WHERE domain = ?`, domain).Scan(&old)
+		err := tx.QueryRowContext(ctx,
+			`SELECT icon FROM domains WHERE user_id = ? AND domain = ?`, userID, domain).Scan(&old)
 		if errors.Is(err, sql.ErrNoRows) {
 			return ErrNotFound
 		}
 		if err != nil {
 			return err
 		}
-		_, err = tx.ExecContext(ctx, `UPDATE domains SET icon = ? WHERE domain = ?`, name, domain)
+		_, err = tx.ExecContext(ctx,
+			`UPDATE domains SET icon = ? WHERE user_id = ? AND domain = ?`, name, userID, domain)
 		return err
 	})
 	if err != nil {
@@ -52,13 +55,14 @@ func (s *Store) SetDomainIcon(ctx context.Context, domain string, data []byte) (
 	return name, nil
 }
 
-// ClearDomainIcon removes the uploaded icon of domain.
-func (s *Store) ClearDomainIcon(ctx context.Context, domain string) error {
-	old, err := s.domainIcon(ctx, domain)
+// ClearDomainIcon removes the uploaded icon of one of the user's domains.
+func (s *Store) ClearDomainIcon(ctx context.Context, userID int64, domain string) error {
+	old, err := s.domainIcon(ctx, userID, domain)
 	if err != nil {
 		return err
 	}
-	if _, err := s.db.ExecContext(ctx, `UPDATE domains SET icon = NULL WHERE domain = ?`, domain); err != nil {
+	if _, err := s.db.ExecContext(ctx,
+		`UPDATE domains SET icon = NULL WHERE user_id = ? AND domain = ?`, userID, domain); err != nil {
 		return err
 	}
 	if old.Valid {
@@ -67,11 +71,12 @@ func (s *Store) ClearDomainIcon(ctx context.Context, domain string) error {
 	return nil
 }
 
-// DeleteDomain removes a domain that no site uses any more.
-func (s *Store) DeleteDomain(ctx context.Context, domain string) error {
+// DeleteDomain removes a domain that none of the user's sites uses any more.
+func (s *Store) DeleteDomain(ctx context.Context, userID int64, domain string) error {
 	var old sql.NullString
 	err := s.inTx(ctx, func(tx *sql.Tx) error {
-		err := tx.QueryRowContext(ctx, `SELECT icon FROM domains WHERE domain = ?`, domain).Scan(&old)
+		err := tx.QueryRowContext(ctx,
+			`SELECT icon FROM domains WHERE user_id = ? AND domain = ?`, userID, domain).Scan(&old)
 		if errors.Is(err, sql.ErrNoRows) {
 			return ErrNotFound
 		}
@@ -80,13 +85,13 @@ func (s *Store) DeleteDomain(ctx context.Context, domain string) error {
 		}
 		var used int
 		if err := tx.QueryRowContext(ctx,
-			`SELECT COUNT(*) FROM sites WHERE domain = ?`, domain).Scan(&used); err != nil {
+			`SELECT COUNT(*) FROM sites WHERE user_id = ? AND domain = ?`, userID, domain).Scan(&used); err != nil {
 			return err
 		}
 		if used > 0 {
 			return fmt.Errorf("%w: 仍有 %d 个网站使用该域名", ErrConflict, used)
 		}
-		_, err = tx.ExecContext(ctx, `DELETE FROM domains WHERE domain = ?`, domain)
+		_, err = tx.ExecContext(ctx, `DELETE FROM domains WHERE user_id = ? AND domain = ?`, userID, domain)
 		return err
 	})
 	if err != nil {
@@ -107,9 +112,10 @@ func (s *Store) IconPath(name string) (string, error) {
 	return filepath.Join(s.iconDir, name), nil
 }
 
-func (s *Store) domainIcon(ctx context.Context, domain string) (sql.NullString, error) {
+func (s *Store) domainIcon(ctx context.Context, userID int64, domain string) (sql.NullString, error) {
 	var icon sql.NullString
-	err := s.db.QueryRowContext(ctx, `SELECT icon FROM domains WHERE domain = ?`, domain).Scan(&icon)
+	err := s.db.QueryRowContext(ctx,
+		`SELECT icon FROM domains WHERE user_id = ? AND domain = ?`, userID, domain).Scan(&icon)
 	if errors.Is(err, sql.ErrNoRows) {
 		return icon, ErrNotFound
 	}
@@ -136,8 +142,8 @@ func (s *Store) writeIcon(name string, data []byte) error {
 	return os.Rename(tmp.Name(), path)
 }
 
-// removeIconIfUnused deletes an icon file once no domain points at it.
-// Several domains may share one file when their icons are identical.
+// removeIconIfUnused deletes an icon file once no domain of any user
+// points at it. Identical icons share one file.
 func (s *Store) removeIconIfUnused(ctx context.Context, name string) {
 	var used int
 	if err := s.db.QueryRowContext(ctx,
