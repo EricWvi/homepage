@@ -77,6 +77,22 @@ var migrations = []string{
 	);
 	CREATE INDEX site_links_site ON site_links (site_id, position);
 	`,
+	`
+	-- Files are named by content hash and shared between users, like icons.
+	CREATE TABLE wallpapers (
+		id         INTEGER PRIMARY KEY,
+		user_id    INTEGER NOT NULL REFERENCES users (id),
+		file       TEXT    NOT NULL,
+		thumb      TEXT    NOT NULL,
+		width      INTEGER NOT NULL,
+		height     INTEGER NOT NULL,
+		created_at TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+		UNIQUE (user_id, file)
+	);
+	CREATE INDEX wallpapers_file ON wallpapers (file);
+
+	ALTER TABLE users ADD COLUMN wallpaper_id INTEGER REFERENCES wallpapers (id) ON DELETE SET NULL;
+	`,
 }
 
 func migrate(db *sql.DB) error {

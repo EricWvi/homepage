@@ -5,7 +5,8 @@ import react from "@vitejs/plugin-react";
 import { defineConfig, type Plugin } from "vite";
 
 
-// In development the Go server runs on :36749 and owns /api, /icons and /auth.
+// In development the Go server runs on :36749 and owns /api, /icons,
+// /wallpapers and /auth.
 const backend = process.env.HOMEPAGE_BACKEND ?? "http://localhost:36749";
 
 // emptyOutDir wipes dist/.gitkeep, which go:embed needs in a fresh clone.
@@ -26,6 +27,7 @@ export default defineConfig({
     proxy: {
       "/api": backend,
       "/icons": backend,
+      "/wallpapers": backend,
       "/auth": backend,
     },
   },

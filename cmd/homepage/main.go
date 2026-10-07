@@ -62,7 +62,10 @@ func run(configPath string) error {
 		ClientSecret: cfg.OIDC.ClientSecret,
 		DevUser:      cfg.DevUser,
 	})
-	handler, err := server.New(st, authn, homepage.Frontend(), version)
+	handler, err := server.New(st, authn, homepage.Frontend(), server.Options{
+		Version:  version,
+		IdleWait: time.Duration(cfg.IdleWait),
+	})
 	if err != nil {
 		return err
 	}

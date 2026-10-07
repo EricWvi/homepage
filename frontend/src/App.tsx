@@ -1,5 +1,15 @@
-import { FolderTreeIcon, ImagesIcon, LogOutIcon, PencilIcon, PlusIcon, Trash2Icon } from "lucide-react";
+import {
+  FolderTreeIcon,
+  GalleryHorizontalEndIcon,
+  ImagesIcon,
+  LogOutIcon,
+  MonitorPlayIcon,
+  PencilIcon,
+  PlusIcon,
+  Trash2Icon,
+} from "lucide-react";
 import { useState } from "react";
+import { toast } from "sonner";
 
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { DomainsDialog } from "@/components/domains-dialog";
@@ -7,7 +17,7 @@ import { GroupsDialog } from "@/components/groups-dialog";
 import { SearchBox } from "@/components/search-box";
 import { SiteDialog, type SiteDialogTarget } from "@/components/site-dialog";
 import { SiteGrid } from "@/components/site-grid";
-import { Toolbar } from "@/components/toolbar";
+import { Toolbar, type ToolbarAction } from "@/components/toolbar";
 import { Button } from "@/components/ui/button";
 import {
   ContextMenu,
@@ -16,8 +26,12 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
+import { WallpaperScreen } from "@/components/wallpaper-screen";
+import { WallpapersDialog } from "@/components/wallpapers-dialog";
+import { useIdle } from "@/hooks/use-idle";
 import { useSnapshot } from "@/hooks/use-snapshot";
 import { api, type Site } from "@/lib/api";
+import { isDesktop } from "@/lib/platform";
 
 export function App() {
   const { snapshot, signedOut, signIn, signOut, mutate } = useSnapshot();
@@ -25,6 +39,24 @@ export function App() {
   const [deleting, setDeleting] = useState<Site | null>(null);
   const [groupsOpen, setGroupsOpen] = useState(false);
   const [domainsOpen, setDomainsOpen] = useState(false);
+  const [wallpapersOpen, setWallpapersOpen] = useState(false);
+  const [wallpaperShown, setWallpaperShown] = useState(false);
+
+  const wallpaperCount = snapshot?.wallpapers.length ?? 0;
+  useIdle(
+    (snapshot?.idleWaitSeconds ?? 0) * 1000,
+    isDesktop && wallpaperCount > 0 && !wallpaperShown,
+    () => setWallpaperShown(true), // no click to allow fullscreen: fill the window instead
+  );
+  const showWallpaper = () => {
+    if (wallpaperCount === 0) {
+      toast.info("壁纸库还是空的，先上传几张壁纸吧");
+      return;
+    }
+    // Fullscreen needs this click, so request it before anything else.
+    void document.documentElement.requestFullscreen().catch(() => {});
+    setWallpaperShown(true);
+  };
 
   const isEmpty = snapshot !== null && snapshot.sites.length === 0 && snapshot.groups.length <= 1;
   const addSite = () => setSiteDialog({ site: null });
@@ -50,6 +82,12 @@ export function App() {
           { label: "添加网站", icon: PlusIcon, onClick: addSite },
           { label: "分组管理", icon: FolderTreeIcon, onClick: () => setGroupsOpen(true) },
           { label: "图标管理", icon: ImagesIcon, onClick: () => setDomainsOpen(true) },
+          ...(isDesktop
+            ? ([
+                { label: "壁纸库", icon: GalleryHorizontalEndIcon, onClick: () => setWallpapersOpen(true) },
+                { label: "壁纸", icon: MonitorPlayIcon, onClick: showWallpaper },
+              ] satisfies ToolbarAction[])
+            : []),
           { label: user ? `退出登录（${user}）` : "退出登录", icon: LogOutIcon, onClick: () => void signOut() },
         ]}
       />
@@ -93,6 +131,14 @@ export function App() {
       <SiteDialog target={siteDialog} onClose={() => setSiteDialog(null)} />
       <GroupsDialog open={groupsOpen} onOpenChange={setGroupsOpen} />
       <DomainsDialog open={domainsOpen} onOpenChange={setDomainsOpen} />
+      {isDesktop && <WallpapersDialog open={wallpapersOpen} onOpenChange={setWallpapersOpen} />}
+      {isDesktop && wallpaperShown && wallpaperCount > 0 && (
+        <WallpaperScreen
+          wallpapers={snapshot.wallpapers}
+          initialId={snapshot.currentWallpaperId}
+          onClose={() => setWallpaperShown(false)}
+        />
+      )}
       <ConfirmDialog
         open={deleting !== null}
         title="删除网站"

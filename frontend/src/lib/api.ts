@@ -28,6 +28,15 @@ export type Domain = {
   siteCount: number;
 };
 
+export type Wallpaper = {
+  id: number;
+  /** Hashed file names under /wallpapers/. */
+  file: string;
+  thumb: string;
+  width: number;
+  height: number;
+};
+
 export type User = {
   name: string;
   email: string;
@@ -38,7 +47,13 @@ export type Snapshot = {
   groups: Group[];
   sites: Site[];
   domains: Domain[];
+  /** Newest first. */
+  wallpapers: Wallpaper[];
+  /** The wallpaper last shown, or null. */
+  currentWallpaperId: number | null;
   user: User;
+  /** How long the page waits for input before showing wallpapers. */
+  idleWaitSeconds: number;
 };
 
 export type SiteInput = {
@@ -97,9 +112,14 @@ export const api = {
   setIcon: (domain: string, file: Blob) => request("PUT", `${domainPath(domain)}/icon`, file),
   clearIcon: (domain: string) => request("DELETE", `${domainPath(domain)}/icon`),
   deleteDomain: (domain: string) => request("DELETE", domainPath(domain)),
+
+  addWallpaper: (file: Blob) => request("POST", "/api/wallpapers", file),
+  deleteWallpaper: (id: number) => request("DELETE", `/api/wallpapers/${id}`),
+  setCurrentWallpaper: (id: number) => request("PUT", "/api/wallpapers/current", { id }),
 };
 
 export const iconUrl = (name: string) => `/icons/${name}`;
+export const wallpaperUrl = (name: string) => `/wallpapers/${name}`;
 
 /** Ends this browser's session on the server. */
 export async function logout() {

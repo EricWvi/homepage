@@ -9,6 +9,8 @@ import (
 	"io/fs"
 	"net/url"
 	"os"
+	"regexp"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -30,6 +32,24 @@ type Config struct {
 	// DevUser, when set, signs every request in as this local user and
 	// disables OIDC. For local development only.
 	DevUser string `yaml:"dev_user"`
+	// IdleWait is how long a desktop browser must sit idle on the page
+	// before the wallpaper screen opens.
+	IdleWait Duration `yaml:"idle_wait"`
+}
+
+// Duration is a positive duration written with h, m and s units only,
+// e.g. "5m", "90s" or "1h30m".
+type Duration time.Duration
+
+var durationFormat = regexp.MustCompile(`^(\d+[hms])+$`)
+
+func (d *Duration) UnmarshalYAML(node *yaml.Node) error {
+	parsed, err := time.ParseDuration(node.Value)
+	if !durationFormat.MatchString(node.Value) || err != nil || parsed <= 0 {
+		return fmt.Errorf("line %d: invalid duration %q, use h, m or s such as \"5m\"", node.Line, node.Value)
+	}
+	*d = Duration(parsed)
+	return nil
 }
 
 // OIDC configures the identity provider (Authelia).
@@ -42,8 +62,9 @@ type OIDC struct {
 // Default returns the configuration used when no file is present.
 func Default() Config {
 	return Config{
-		Listen:  ":36749",
-		DataDir: "./data",
+		Listen:   ":36749",
+		DataDir:  "./data",
+		IdleWait: Duration(5 * time.Minute),
 	}
 }
 

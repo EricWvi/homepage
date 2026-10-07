@@ -60,25 +60,43 @@ type Domain struct {
 	SiteCount int     `json:"siteCount"`
 }
 
+// Wallpaper is an image in the user's wallpaper library.
+type Wallpaper struct {
+	ID int64 `json:"id"`
+	// File and Thumb are hashed file names under /wallpapers/.
+	File   string `json:"file"`
+	Thumb  string `json:"thumb"`
+	Width  int    `json:"width"`
+	Height int    `json:"height"`
+}
+
 // Snapshot is the complete state the frontend renders from.
 type Snapshot struct {
 	Groups  []Group  `json:"groups"`
 	Sites   []Site   `json:"sites"`
 	Domains []Domain `json:"domains"`
+	// Wallpapers are newest first.
+	Wallpapers []Wallpaper `json:"wallpapers"`
+	// CurrentWallpaper is the wallpaper last shown, or nil.
+	CurrentWallpaper *int64 `json:"currentWallpaperId"`
 }
 
 // Store is safe for concurrent use. Every query on groups, sites and
 // domains is scoped to one user.
 type Store struct {
-	db      *sql.DB
-	iconDir string
+	db           *sql.DB
+	iconDir      string
+	wallpaperDir string
 }
 
 // Open opens (and migrates) the database inside dataDir.
 func Open(dataDir string) (*Store, error) {
 	iconDir := filepath.Join(dataDir, "icons")
-	if err := os.MkdirAll(iconDir, 0o755); err != nil {
-		return nil, fmt.Errorf("create data dir: %w", err)
+	wallpaperDir := filepath.Join(dataDir, "wallpapers")
+	for _, dir := range []string{iconDir, wallpaperDir} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return nil, fmt.Errorf("create data dir: %w", err)
+		}
 	}
 	dsn := "file:" + filepath.Join(dataDir, "homepage.db") +
 		"?_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)"
@@ -92,7 +110,7 @@ func Open(dataDir string) (*Store, error) {
 		db.Close()
 		return nil, err
 	}
-	return &Store{db: db, iconDir: iconDir}, nil
+	return &Store{db: db, iconDir: iconDir, wallpaperDir: wallpaperDir}, nil
 }
 
 // Close closes the database.
@@ -100,7 +118,7 @@ func (s *Store) Close() error { return s.db.Close() }
 
 // Snapshot returns the user's groups, sites and domains in display order.
 func (s *Store) Snapshot(ctx context.Context, userID int64) (Snapshot, error) {
-	snap := Snapshot{Groups: []Group{}, Sites: []Site{}, Domains: []Domain{}}
+	snap := Snapshot{Groups: []Group{}, Sites: []Site{}, Domains: []Domain{}, Wallpapers: []Wallpaper{}}
 
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT id, name, is_default, position FROM site_groups
@@ -163,15 +181,24 @@ func (s *Store) Snapshot(ctx context.Context, userID int64) (Snapshot, error) {
 	if err != nil {
 		return snap, err
 	}
-	defer rows.Close()
 	for rows.Next() {
 		var d Domain
 		if err := rows.Scan(&d.Domain, &d.Icon, &d.SiteCount); err != nil {
+			rows.Close()
 			return snap, err
 		}
 		snap.Domains = append(snap.Domains, d)
 	}
-	return snap, rows.Err()
+	rows.Close()
+
+	if snap.Wallpapers, err = s.wallpapers(ctx, userID); err != nil {
+		return snap, err
+	}
+	err = s.db.QueryRowContext(ctx, `SELECT wallpaper_id FROM users WHERE id = ?`, userID).Scan(&snap.CurrentWallpaper)
+	if errors.Is(err, sql.ErrNoRows) {
+		err = nil
+	}
+	return snap, err
 }
 
 func (s *Store) inTx(ctx context.Context, fn func(*sql.Tx) error) error {

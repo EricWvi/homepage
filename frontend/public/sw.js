@@ -4,6 +4,8 @@
 //                    once every asset it references is cached
 //   /assets/*        cache-first; Vite content-hashes these files
 //   /icons/*         cache-first; icon names are content hashes
+//   /wallpapers/*    cache-first; names are content hashes. Only desktop
+//                    pages request them, so phones never cache any.
 //   /api/*           untouched; the app keeps its own snapshot copy
 //   /auth/*          untouched; login redirects must reach the server
 //
@@ -12,6 +14,7 @@ const CACHE_VERSION = "v1";
 const SHELL = `shell-${CACHE_VERSION}`;
 const ASSETS = `assets-${CACHE_VERSION}`;
 const ICONS = `icons-${CACHE_VERSION}`;
+const WALLPAPERS = `wallpapers-${CACHE_VERSION}`;
 const SHELL_URL = "/";
 const STATIC_FILES = ["/favicon.svg"];
 
@@ -22,7 +25,7 @@ self.addEventListener("install", (event) => {
 self.addEventListener("activate", (event) => {
   event.waitUntil(
     (async () => {
-      const keep = new Set([SHELL, ASSETS, ICONS]);
+      const keep = new Set([SHELL, ASSETS, ICONS, WALLPAPERS]);
       for (const name of await caches.keys()) {
         if (!keep.has(name)) await caches.delete(name);
       }
@@ -43,6 +46,10 @@ self.addEventListener("fetch", (event) => {
     event.respondWith(cacheFirst(ASSETS, request));
   } else if (url.pathname.startsWith("/icons/")) {
     event.respondWith(cacheFirst(ICONS, request));
+  } else if (url.pathname.startsWith("/wallpapers/")) {
+    // Skip the HTTP cache: this cache is the only copy, so pruning it when a
+    // wallpaper is deleted really frees the space.
+    event.respondWith(cacheFirst(WALLPAPERS, request, { cache: "no-store" }));
   } else if (STATIC_FILES.includes(url.pathname)) {
     event.respondWith(staleWhileRevalidate(SHELL, request, event));
   }
@@ -88,11 +95,11 @@ async function updateShell() {
   }
 }
 
-async function cacheFirst(cacheName, request) {
+async function cacheFirst(cacheName, request, init) {
   const cache = await caches.open(cacheName);
   const cached = await cache.match(request);
   if (cached) return cached;
-  const res = await fetch(request);
+  const res = await fetch(request, init);
   if (res.ok) await cache.put(request, res.clone());
   return res;
 }

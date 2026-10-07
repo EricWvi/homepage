@@ -4,11 +4,14 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"image"
+	"image/png"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"testing/fstest"
+	"time"
 
 	"homepage/internal/auth"
 	"homepage/internal/store"
@@ -41,7 +44,7 @@ func newTest(t *testing.T) *testServer {
 		"sw.js":             {Data: []byte("self.addEventListener('fetch',()=>{})")},
 		".gitkeep":          {Data: nil},
 	}
-	h, err := New(st, authn, web, "test")
+	h, err := New(st, authn, web, Options{Version: "test", IdleWait: 90 * time.Second})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -78,7 +81,8 @@ func do(t *testing.T, ts *testServer, method, path, body string) *httptest.Respo
 
 type snapshotBody struct {
 	store.Snapshot
-	User store.User `json:"user"`
+	User            store.User `json:"user"`
+	IdleWaitSeconds int        `json:"idleWaitSeconds"`
 }
 
 func decodeSnapshot(t *testing.T, rec *httptest.ResponseRecorder) snapshotBody {
@@ -317,5 +321,53 @@ func TestLogoutEndsOnlyThisSession(t *testing.T) {
 	h.session = other
 	if rec := do(t, h, "GET", "/api/snapshot", ""); rec.Code != http.StatusOK {
 		t.Fatalf("other browser: status = %d", rec.Code)
+	}
+}
+
+func TestWallpapers(t *testing.T) {
+	h := newTest(t)
+	var img bytes.Buffer
+	png.Encode(&img, image.NewRGBA(image.Rect(0, 0, 64, 40)))
+
+	snap := decodeSnapshot(t, do(t, h, "POST", "/api/wallpapers", img.String()))
+	if len(snap.Wallpapers) != 1 || snap.CurrentWallpaper != nil || snap.IdleWaitSeconds != 90 {
+		t.Fatalf("snapshot = %+v", snap)
+	}
+	wp := snap.Wallpapers[0]
+
+	for _, name := range []string{wp.File, wp.Thumb} {
+		rec := do(t, h, "GET", "/wallpapers/"+name, "")
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%s: status = %d", name, rec.Code)
+		}
+		if cc := rec.Header().Get("Cache-Control"); cc != "private, max-age=31536000, immutable" {
+			t.Fatalf("%s: Cache-Control = %q", name, cc)
+		}
+	}
+
+	snap = decodeSnapshot(t, do(t, h, "PUT", "/api/wallpapers/current", `{"id":`+itoa(wp.ID)+`}`))
+	if snap.CurrentWallpaper == nil || *snap.CurrentWallpaper != wp.ID {
+		t.Fatalf("current = %v", snap.CurrentWallpaper)
+	}
+
+	bob := *h
+	bob.session = h.signIn(t, "bob")
+	if rec := do(t, &bob, "PUT", "/api/wallpapers/current", `{"id":`+itoa(wp.ID)+`}`); rec.Code != http.StatusNotFound {
+		t.Fatalf("bob using alice's wallpaper: status = %d", rec.Code)
+	}
+
+	if rec := do(t, h, "POST", "/api/wallpapers", "not an image"); rec.Code != http.StatusBadRequest {
+		t.Fatalf("bad upload: status = %d", rec.Code)
+	}
+	if rec := do(t, h, "POST", "/api/wallpapers", strings.Repeat("x", maxWallpaperBytes+1)); rec.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("oversized upload: status = %d", rec.Code)
+	}
+
+	snap = decodeSnapshot(t, do(t, h, "DELETE", "/api/wallpapers/"+itoa(wp.ID), ""))
+	if len(snap.Wallpapers) != 0 || snap.CurrentWallpaper != nil {
+		t.Fatalf("after delete: %+v", snap)
+	}
+	if rec := do(t, h, "GET", "/wallpapers/"+wp.File, ""); rec.Code != http.StatusNotFound {
+		t.Fatalf("deleted file: status = %d", rec.Code)
 	}
 }

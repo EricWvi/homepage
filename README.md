@@ -8,6 +8,7 @@ Safari New Tab 风格的个人主页：纯色柔和背景随系统亮暗切换�
 
 - 常驻搜索框：Enter 开始输入，输入时列出匹配的网站和子链接，Tab 选择建议；没有建议时 Tab 切换搜索引擎
 - 网站可以带同域名的子链接，例如 GitHub 上常用的几个仓库
+- 桌面端壁纸：壁纸库管理上传的壁纸，空闲一段时间或手动进入全屏壁纸界面，← → 切换
 - 网站按分组以大图标网格展示，默认分组置顶且不显示标题
 - 图标绑定域名，在独立的图标管理界面中维护
 - 打开过一次后可离线浏览
@@ -23,7 +24,7 @@ Safari New Tab 风格的个人主页：纯色柔和背景随系统亮暗切换�
 task install:frontend                  # 安装前端依赖（npm ci）
 echo 'dev_user: "eric"' > config.yaml  # 本地开发跳过 OIDC，所有请求都以该用户登录
 task run:server                        # 后端 :36749
-task run:web                           # Vite 开发服务器，/api、/icons、/auth 代理到 :36749
+task run:web                           # Vite 开发服务器，/api、/icons、/wallpapers、/auth 代理到 :36749
 ```
 
 `task run:server -- -config other.yaml` 可以把参数透传给 `homepage`。Service Worker 只在生产构建中注册。
@@ -57,8 +58,9 @@ task build           # 产物：release/homepage
 ## 配置
 
 ```yaml
-listen: ":36749"                          # 监听地址
-data_dir: "./data"                       # SQLite 数据库与图标文件目录
+listen: ":36749"                         # 监听地址
+data_dir: "./data"                       # SQLite 数据库、图标与壁纸文件目录
+idle_wait: "5m"                          # 桌面端无操作多久后进入壁纸界面，单位 h/m/s，默认 5m
 public_url: "https://home.example.com"   # 浏览器访问的 origin
 oidc:
   issuer: "https://auth.example.com"

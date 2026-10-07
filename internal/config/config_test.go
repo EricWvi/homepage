@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func write(t *testing.T, content string) string {
@@ -39,6 +40,7 @@ func TestLoadOIDC(t *testing.T) {
 	want := Config{
 		Listen:    ":9000",
 		DataDir:   "./data",
+		IdleWait:  Duration(5 * time.Minute),
 		PublicURL: "https://home.test",
 		OIDC:      OIDC{Issuer: "https://auth.test", ClientID: "homepage", ClientSecret: "secret"},
 	}
@@ -88,6 +90,28 @@ func TestLoadRejectsInvalidValues(t *testing.T) {
 	} {
 		if _, err := Load(write(t, content)); err == nil {
 			t.Errorf("expected error for:\n%s", content)
+		}
+	}
+}
+
+func TestLoadIdleWait(t *testing.T) {
+	for in, want := range map[string]time.Duration{
+		"30s":   30 * time.Second,
+		"10m":   10 * time.Minute,
+		"2h":    2 * time.Hour,
+		"1h30m": 90 * time.Minute,
+	} {
+		cfg, err := Load(write(t, "dev_user: eric\nidle_wait: "+in+"\n"))
+		if err != nil {
+			t.Fatalf("%s: %v", in, err)
+		}
+		if time.Duration(cfg.IdleWait) != want {
+			t.Errorf("%s: got %v, want %v", in, time.Duration(cfg.IdleWait), want)
+		}
+	}
+	for _, in := range []string{"0s", "5", "500ms", "1.5h", "-5m", "5 m", "abc"} {
+		if _, err := Load(write(t, "dev_user: eric\nidle_wait: "+in+"\n")); err == nil || !strings.Contains(err.Error(), "duration") {
+			t.Errorf("%s: err = %v, want duration error", in, err)
 		}
 	}
 }

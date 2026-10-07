@@ -2,15 +2,26 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { toast } from "sonner";
 
 import { api, ApiError, logout, type Snapshot } from "@/lib/api";
-import { clearUserData, isSignedOut, readCachedSnapshot, setSignedOut, writeCachedSnapshot } from "@/lib/cache";
+import {
+  clearUserData,
+  isSignedOut,
+  pruneWallpaperCache,
+  readCachedSnapshot,
+  setSignedOut,
+  writeCachedSnapshot,
+} from "@/lib/cache";
+import { isDesktop } from "@/lib/platform";
 
 type SnapshotContext = {
   /** null on the very first visit before the first response, and after signing out. */
   snapshot: Snapshot | null;
   /** True after the user signed out on this device. */
   signedOut: boolean;
-  /** Runs a mutation and adopts the snapshot it returns. Resolves false on failure. */
-  mutate: (action: () => Promise<Snapshot>) => Promise<boolean>;
+  /**
+   * Runs a mutation and adopts the snapshot it returns. Resolves false on
+   * failure, which is reported in a toast unless `silent`.
+   */
+  mutate: (action: () => Promise<Snapshot>, options?: { silent?: boolean }) => Promise<boolean>;
   signIn: () => void;
   signOut: () => Promise<void>;
 };
@@ -23,9 +34,11 @@ export function SnapshotProvider({ children }: { children: ReactNode }) {
   const [signedOut, setSignedOutState] = useState(isSignedOut);
   const [snapshot, setSnapshot] = useState<Snapshot | null>(() => (signedOut ? null : readCachedSnapshot()));
 
+  // Every snapshot adopted here is fresh from the server.
   const adopt = useCallback((snap: Snapshot) => {
     setSnapshot(snap);
     writeCachedSnapshot(snap);
+    if (isDesktop) void pruneWallpaperCache(snap);
   }, []);
 
   // The session is gone (signed out elsewhere, or never existed): drop the
@@ -64,7 +77,7 @@ export function SnapshotProvider({ children }: { children: ReactNode }) {
   }, [adopt, unauthorized, signedOut]);
 
   const mutate = useCallback(
-    async (action: () => Promise<Snapshot>) => {
+    async (action: () => Promise<Snapshot>, { silent = false } = {}) => {
       try {
         adopt(await action());
         return true;
@@ -73,7 +86,7 @@ export function SnapshotProvider({ children }: { children: ReactNode }) {
           unauthorized();
           return false;
         }
-        toast.error(err instanceof Error ? err.message : "操作失败");
+        if (!silent) toast.error(err instanceof Error ? err.message : "操作失败");
         return false;
       }
     },

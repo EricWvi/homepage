@@ -1,7 +1,10 @@
 # HTTP listen address
 listen: ":36749"
-# Directory for the SQLite database and uploaded icons
+# Directory for the SQLite database, uploaded icons and wallpapers
 data_dir: "./data"
+# Desktop only: show wallpapers after the page has been left alone this long.
+# Units: h, m, s (e.g. "90s", "1h30m").
+idle_wait: "5m"
 
 # Origin browsers use to reach this site. The OIDC redirect URI is
 # <public_url>/auth/callback and must be registered with the provider.
