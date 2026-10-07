@@ -30,6 +30,7 @@
   --input: oklch(0.86 0.008 85);
   --ring: oklch(0.6 0.01 75);
   --tile: oklch(0.982 0.004 85);
+  --github-fill: #24292f;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -53,6 +54,7 @@
     --input: oklch(0.38 0.01 255);
     --ring: oklch(0.55 0.01 255);
     --tile: oklch(0.32 0.009 255);
+    --github-fill: #fff;
   }
 }
 

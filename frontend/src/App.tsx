@@ -4,6 +4,7 @@ import { useState } from "react";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { DomainsDialog } from "@/components/domains-dialog";
 import { GroupsDialog } from "@/components/groups-dialog";
+import { SearchBox } from "@/components/search-box";
 import { SiteDialog, type SiteDialogTarget } from "@/components/site-dialog";
 import { SiteGrid } from "@/components/site-grid";
 import { Toolbar } from "@/components/toolbar";
@@ -54,6 +55,7 @@ export function App() {
       />
 
       <main className="mx-auto w-full max-w-[780px] px-4 pt-[12vh] pb-24 sm:px-6">
+        <SearchBox />
         {!isEmpty && (
           <SiteGrid
             snapshot={snapshot}
