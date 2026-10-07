@@ -2,3 +2,17 @@
 listen: ":8080"
 # Directory for the SQLite database and uploaded icons
 data_dir: "./data"
+
+# Origin browsers use to reach this site. The OIDC redirect URI is
+# <public_url>/auth/callback and must be registered with the provider.
+public_url: "https://home.example.com"
+
+# Authelia (or any OIDC provider) confidential client.
+oidc:
+  issuer: "https://auth.example.com"
+  client_id: "homepage"
+  # Prefer the HOMEPAGE_OIDC_CLIENT_SECRET environment variable.
+  client_secret: ""
+
+# Local development only: skip OIDC and sign every request in as this user.
+# dev_user: "eric"

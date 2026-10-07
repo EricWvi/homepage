@@ -3,39 +3,76 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
-func TestLoadMissingFileReturnsDefaults(t *testing.T) {
-	cfg, err := Load(filepath.Join(t.TempDir(), "nope.yaml"))
-	if err != nil {
+func write(t *testing.T, content string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if cfg != Default() {
-		t.Fatalf("got %+v, want defaults", cfg)
+	return path
+}
+
+const validOIDC = `
+public_url: https://home.test
+oidc:
+  issuer: https://auth.test
+  client_id: homepage
+  client_secret: secret
+`
+
+func TestLoadRequiresAuthentication(t *testing.T) {
+	_, err := Load(filepath.Join(t.TempDir(), "nope.yaml"))
+	if err == nil || !strings.Contains(err.Error(), "public_url") {
+		t.Fatalf("err = %v, want public_url error", err)
 	}
 }
 
-func TestLoadOverridesDefaults(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "config.yaml")
-	if err := os.WriteFile(path, []byte("listen: \":9000\"\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	cfg, err := Load(path)
+func TestLoadOIDC(t *testing.T) {
+	cfg, err := Load(write(t, "listen: \":9000\"\n"+validOIDC))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Listen != ":9000" || cfg.DataDir != Default().DataDir {
-		t.Fatalf("got %+v", cfg)
+	want := Config{
+		Listen:    ":9000",
+		DataDir:   "./data",
+		PublicURL: "https://home.test",
+		OIDC:      OIDC{Issuer: "https://auth.test", ClientID: "homepage", ClientSecret: "secret"},
+	}
+	if cfg != want {
+		t.Fatalf("got %+v, want %+v", cfg, want)
 	}
 }
 
-func TestLoadRejectsEmptyDataDir(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "config.yaml")
-	if err := os.WriteFile(path, []byte("data_dir: \"\"\n"), 0o644); err != nil {
+func TestLoadClientSecretFromEnv(t *testing.T) {
+	t.Setenv(ClientSecretEnv, "from-env")
+	cfg, err := Load(write(t, strings.Replace(validOIDC, "  client_secret: secret\n", "", 1)))
+	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Load(path); err == nil {
-		t.Fatal("expected error")
+	if cfg.OIDC.ClientSecret != "from-env" {
+		t.Fatalf("secret = %q", cfg.OIDC.ClientSecret)
+	}
+}
+
+func TestLoadDevUserNeedsNoOIDC(t *testing.T) {
+	if _, err := Load(write(t, "dev_user: eric\n")); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestLoadRejectsInvalidValues(t *testing.T) {
+	for _, content := range []string{
+		"data_dir: \"\"\ndev_user: eric\n",
+		strings.Replace(validOIDC, "https://home.test", "https://home.test/sub", 1),
+		strings.Replace(validOIDC, "https://home.test", "home.test", 1),
+		strings.Replace(validOIDC, "  issuer: https://auth.test\n", "", 1),
+	} {
+		if _, err := Load(write(t, content)); err == nil {
+			t.Errorf("expected error for:\n%s", content)
+		}
 	}
 }
