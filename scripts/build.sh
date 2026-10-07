@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Builds the release binary:
-#   npm ci → typecheck → vite build → go test → go build (frontend embedded)
+#   npm ci → typecheck → vite build → embed check → go test → go build
 #
 # Environment:
 #   VERSION, COMMIT   injected into the binary (default: from git)
@@ -20,6 +20,9 @@ echo "==> frontend"
   npm run typecheck
   npm run build
 )
+
+echo "==> embed check"
+./scripts/check-embed.sh
 
 echo "==> go test"
 go test ./...

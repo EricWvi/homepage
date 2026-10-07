@@ -53,7 +53,7 @@ Ryuk 负责在测试进程被中断时清理残留容器。
 task build           # 产物：release/homepage
 ```
 
-`task build` 调用 `scripts/build.sh`：`npm ci` → TypeScript 类型检查 → Vite 构建 `frontend/dist` → Go 测试 → `CGO_ENABLED=0` 编译并嵌入前端。版本号和 commit 通过 `-ldflags` 注入，`homepage -version` 可查看。`task clean` 删除 `release/` 和已构建的 `frontend/dist`。
+`task build` 调用 `scripts/build.sh`：`npm ci` → TypeScript 类型检查 → Vite 构建 `frontend/dist` → 嵌入检查 → Go 测试 → `CGO_ENABLED=0` 编译并嵌入前端。嵌入检查（`scripts/check-embed.sh`）用 `go list` 确认 `index.html`、`sw.js`、`favicon.svg` 以及 `index.html` 引用的全部打包资源都会被嵌入，缺失即构建失败，因此产物运行时不需要任何前端文件。版本号和 commit 通过 `-ldflags` 注入，`homepage -version` 可查看。`task clean` 删除 `release/` 和已构建的 `frontend/dist`。
 
 ## 配置
 
@@ -74,7 +74,9 @@ oidc:
 
 ## 发布
 
-推送 `v*` 标签后，GitHub Actions 构建多架构 Docker 镜像并推送到 GHCR。容器内数据目录为 `/app/data`，配置文件需挂载到 `/app/config.yaml`。
+推送 `v*` 标签（如 `v1.2.3`）后，GitHub Actions 构建 `linux/amd64`、`linux/arm64` 镜像并推送到 GHCR，标签为版本号（`1.2.3`）和 `latest`；带 `-` 的预发布版本（如 `v1.3.0-rc.1`）不更新 `latest`。也可以在 Actions 页面手动运行 release 工作流并填写版本号。镜像构建与 `task build` 走同样的类型检查、嵌入检查和 Go 测试。
+
+容器内数据目录为 `/app/data`，配置文件需挂载到 `/app/config.yaml`。
 
 ```sh
 docker run -p 36749:36749 \

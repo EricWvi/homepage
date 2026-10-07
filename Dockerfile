@@ -17,7 +17,9 @@ WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
+# .dockerignore keeps any local dist out; only the fresh build is embedded.
 COPY --from=web /src/frontend/dist ./frontend/dist
+RUN ./scripts/check-embed.sh
 RUN go test ./...
 RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath \
       -ldflags "-s -w -X main.version=${VERSION} -X main.commit=${COMMIT}" \
