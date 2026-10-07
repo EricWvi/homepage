@@ -4,8 +4,8 @@
 //
 //	go test -tags authelia ./internal/auth
 //
-// It needs a Docker-compatible socket and the authelia/authelia:4.39.20
-// image already present locally; it never pulls images.
+// It needs a Docker-compatible socket and both images below already
+// present locally; it never pulls images.
 package auth
 
 import (
@@ -43,6 +43,10 @@ import (
 
 const (
 	autheliaImage = "authelia/authelia:4.39.20"
+	// ryukImage is the reaper testcontainers-go v0.44.0 starts to remove
+	// containers even if the test process is killed. Keep it in step with
+	// ReaperDefaultImage when upgrading testcontainers-go.
+	ryukImage = "testcontainers/ryuk:0.14.0"
 	authHost      = "auth.homepage.test"
 	publicURL     = "https://homepage.test"
 	password      = "homepage-test-password"
@@ -262,12 +266,12 @@ func readAll(res *http.Response) string {
 // signing key and returns its issuer URL and a client that trusts it.
 func startAuthelia(t *testing.T) (string, *http.Client) {
 	t.Helper()
-	if err := exec.Command("docker", "image", "inspect", autheliaImage).Run(); err != nil {
-		t.Fatalf("image %s must be present locally (no pulls): %v", autheliaImage, err)
+	// testcontainers pulls missing images on its own; fail first instead.
+	for _, image := range []string{autheliaImage, ryukImage} {
+		if err := exec.Command("docker", "image", "inspect", image).Run(); err != nil {
+			t.Fatalf("image %s must be present locally (no pulls): %v", image, err)
+		}
 	}
-	// Ryuk (the reaper) would need another image; containers are
-	// terminated explicitly below instead.
-	t.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
 
 	// The issuer URL must be the same inside and outside the container, so
 	// the host port is fixed to a free port chosen up front.

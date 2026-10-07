@@ -33,7 +33,14 @@ go test ./...                               # 单元与接口测试
 go test -tags authelia ./internal/auth      # Authelia 契约测试
 ```
 
-契约测试用 testcontainers 启动真实的 Authelia，完整走一遍登录、多用户和退出流程。需要 Docker 或 Podman socket，并且本地已有 `authelia/authelia:4.39.20` 镜像（测试不会拉取镜像，也不使用 Ryuk）。
+契约测试用 testcontainers 启动真实的 Authelia，完整走一遍登录、多用户和退出流程。需要 Docker 或 Podman socket，并且本地已有以下镜像（测试不会拉取镜像）：
+
+```sh
+docker pull docker.io/authelia/authelia:4.39.20
+docker pull docker.io/testcontainers/ryuk:0.14.0   # 版本须与 testcontainers-go 的 ReaperDefaultImage 一致
+```
+
+Ryuk 负责在测试进程被中断时清理残留容器。
 
 ## 构建
 
