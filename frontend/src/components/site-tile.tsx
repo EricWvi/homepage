@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from "react";
 
 import { SiteIcon } from "@/components/site-icon";
-import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import type { Site } from "@/lib/api";
 import { linkPath } from "@/lib/site-links";
 
-// Resting on a tile opens its links; a short grace period lets the pointer
-// travel from the tile into the list. Sweeping across the grid opens nothing.
+// Resting on a tile's badge opens its links; a short grace period lets the
+// pointer travel from the badge into the list. Brushing past opens nothing.
 const HOVER_OPEN_MS = 400;
 const HOVER_CLOSE_MS = 150;
 
@@ -30,9 +30,10 @@ export function SiteTile({ site, icon }: { site: Site; icon: string | null | und
 }
 
 /**
- * Adds a count badge and a list of the site's links. Hovering opens the
- * list without taking focus and closes it when the pointer leaves; clicking
- * the badge opens it for the keyboard and keeps it open until dismissed.
+ * Adds a count badge and a list of the site's links, anchored to the badge.
+ * Hovering the badge opens the list without taking focus and closes it when
+ * the pointer leaves; clicking the badge opens it for the keyboard and keeps
+ * it open until dismissed.
  */
 function TileWithLinks({ site, children }: { site: Site; children: ReactNode }) {
   const [open, setOpen] = useState(false);
@@ -79,40 +80,40 @@ function TileWithLinks({ site, children }: { site: Site; children: ReactNode }) 
         setOpen(next);
       }}
     >
-      <PopoverAnchor asChild>
-        <div
-          className="relative"
-          onPointerEnter={enter}
-          onPointerLeave={leave}
-          onContextMenu={() => {
-            cancel();
-            setOpen(false);
-          }}
-        >
-          {children}
-          <PopoverTrigger asChild>
-            <button
-              type="button"
-              aria-label={`${site.title}的 ${site.links.length} 个子链接`}
-              title="子链接"
-              className="absolute top-13.5 right-1.5 flex h-5 min-w-5 items-center justify-center rounded-full border bg-card px-1 text-[11px] leading-none font-medium text-foreground/70 shadow-sm outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/60"
-              onClick={(e) => {
-                // Already open from hovering: keep it open and hand it to the keyboard.
-                if (open && mode.current === "hover") {
-                  e.preventDefault();
-                  links()[0]?.focus();
-                }
-                mode.current = "click";
-              }}
-            >
-              {site.links.length}
-            </button>
-          </PopoverTrigger>
-        </div>
-      </PopoverAnchor>
+      <div
+        className="relative"
+        onContextMenu={() => {
+          cancel();
+          setOpen(false);
+        }}
+      >
+        {children}
+        <PopoverTrigger asChild>
+          <button
+            type="button"
+            onPointerEnter={enter}
+            onPointerLeave={leave}
+            aria-label={`${site.title}的 ${site.links.length} 个子链接`}
+            title="子链接"
+            className="absolute top-13.5 right-1.5 flex h-5 min-w-5 items-center justify-center rounded-full border bg-card px-1 text-[11px] leading-none font-medium text-foreground/70 shadow-sm outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/60"
+            onClick={(e) => {
+              // Already open from hovering: keep it open and hand it to the keyboard.
+              if (open && mode.current === "hover") {
+                e.preventDefault();
+                links()[0]?.focus();
+              }
+              mode.current = "click";
+            }}
+          >
+            {site.links.length}
+          </button>
+        </PopoverTrigger>
+      </div>
       <PopoverContent
         ref={content}
         side="bottom"
+        align="start"
+        collisionPadding={8}
         className="w-64"
         onPointerEnter={enter}
         onPointerLeave={leave}
