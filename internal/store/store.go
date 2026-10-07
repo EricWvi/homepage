@@ -41,6 +41,14 @@ type Site struct {
 	Domain   string `json:"domain"`
 	GroupID  int64  `json:"groupId"`
 	Position int    `json:"position"`
+	// Links are other pages on the same domain, in the user's order.
+	Links []SiteLink `json:"links"`
+}
+
+// SiteLink is a quick link to another page on its site's domain.
+type SiteLink struct {
+	Title string `json:"title"`
+	URL   string `json:"url"`
 }
 
 // Domain owns the icon shown for every site on that host. Domains outlive
@@ -116,13 +124,34 @@ func (s *Store) Snapshot(ctx context.Context, userID int64) (Snapshot, error) {
 	if err != nil {
 		return snap, err
 	}
+	siteIndex := map[int64]int{}
 	for rows.Next() {
-		var st Site
+		st := Site{Links: []SiteLink{}}
 		if err := rows.Scan(&st.ID, &st.Title, &st.URL, &st.Domain, &st.GroupID, &st.Position); err != nil {
 			rows.Close()
 			return snap, err
 		}
+		siteIndex[st.ID] = len(snap.Sites)
 		snap.Sites = append(snap.Sites, st)
+	}
+	rows.Close()
+
+	rows, err = s.db.QueryContext(ctx,
+		`SELECT l.site_id, l.title, l.url FROM site_links l JOIN sites s ON s.id = l.site_id
+		 WHERE s.user_id = ? ORDER BY l.site_id, l.position`, userID)
+	if err != nil {
+		return snap, err
+	}
+	for rows.Next() {
+		var siteID int64
+		var l SiteLink
+		if err := rows.Scan(&siteID, &l.Title, &l.URL); err != nil {
+			rows.Close()
+			return snap, err
+		}
+		if i, ok := siteIndex[siteID]; ok {
+			snap.Sites[i].Links = append(snap.Sites[i].Links, l)
+		}
 	}
 	rows.Close()
 

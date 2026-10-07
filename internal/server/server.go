@@ -241,7 +241,7 @@ func pathID(w http.ResponseWriter, r *http.Request) (int64, bool) {
 }
 
 func decode(w http.ResponseWriter, r *http.Request, v any) bool {
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(v); err != nil {
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 256<<10)).Decode(v); err != nil {
 		writeError(w, http.StatusBadRequest, "请求格式不正确")
 		return false
 	}

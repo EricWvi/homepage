@@ -65,6 +65,18 @@ var migrations = []string{
 	CREATE INDEX sites_group ON sites (user_id, group_id, position);
 	CREATE INDEX sites_domain ON sites (user_id, domain);
 	`,
+	`
+	-- Quick links to other pages on a site's domain. They belong to the
+	-- site, so ownership follows sites.user_id.
+	CREATE TABLE site_links (
+		id       INTEGER PRIMARY KEY,
+		site_id  INTEGER NOT NULL REFERENCES sites (id) ON DELETE CASCADE,
+		title    TEXT    NOT NULL,
+		url      TEXT    NOT NULL,
+		position INTEGER NOT NULL
+	);
+	CREATE INDEX site_links_site ON site_links (site_id, position);
+	`,
 }
 
 func migrate(db *sql.DB) error {

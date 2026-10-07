@@ -12,6 +12,13 @@ export type Site = {
   domain: string;
   groupId: number;
   position: number;
+  /** Other pages on the same domain, in the user's order. */
+  links: SiteLink[];
+};
+
+export type SiteLink = {
+  title: string;
+  url: string;
 };
 
 export type Domain = {
@@ -39,6 +46,8 @@ export type SiteInput = {
   url: string;
   /** 0 selects the default group. */
   groupId: number;
+  /** Replaces the site's links. A url may be a path on the site; an empty title is derived from it. */
+  links: SiteLink[];
 };
 
 export class ApiError extends Error {

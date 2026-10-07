@@ -111,9 +111,16 @@ func TestSiteLifecycle(t *testing.T) {
 	}
 	id := snap.Sites[0].ID
 
-	snap = decodeSnapshot(t, do(t, h, "PUT", "/api/sites/"+itoa(id), `{"title":"Golang","url":"https://go.dev"}`))
-	if snap.Sites[0].Title != "Golang" {
+	snap = decodeSnapshot(t, do(t, h, "PUT", "/api/sites/"+itoa(id),
+		`{"title":"Golang","url":"https://go.dev","links":[{"title":"","url":"doc"}]}`))
+	if snap.Sites[0].Title != "Golang" || len(snap.Sites[0].Links) != 1 ||
+		snap.Sites[0].Links[0] != (store.SiteLink{Title: "doc", URL: "https://go.dev/doc"}) {
 		t.Fatalf("sites = %+v", snap.Sites)
+	}
+
+	rec := do(t, h, "PUT", "/api/sites/"+itoa(id), `{"title":"Golang","url":"https://go.dev","links":[{"url":"https://example.com"}]}`)
+	if rec.Code != http.StatusBadRequest || !strings.Contains(errorOf(t, rec), "同域名") {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body)
 	}
 
 	snap = decodeSnapshot(t, do(t, h, "DELETE", "/api/sites/"+itoa(id), ""))

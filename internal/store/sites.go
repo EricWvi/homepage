@@ -15,15 +15,17 @@ const (
 )
 
 // SiteInput is the user-editable part of a site. A zero GroupID means the
-// user's default group.
+// user's default group. Links replace the site's existing links.
 type SiteInput struct {
-	Title   string `json:"title"`
-	URL     string `json:"url"`
-	GroupID int64  `json:"groupId"`
+	Title   string     `json:"title"`
+	URL     string     `json:"url"`
+	GroupID int64      `json:"groupId"`
+	Links   []SiteLink `json:"links"`
 }
 
 // normalize validates the input and derives the site's domain. A URL
-// without a scheme is treated as https.
+// without a scheme is treated as https. Links are resolved against the
+// site URL and must stay on its domain.
 func (in SiteInput) normalize() (SiteInput, string, error) {
 	in.Title = strings.TrimSpace(in.Title)
 	in.URL = strings.TrimSpace(in.URL)
@@ -46,7 +48,11 @@ func (in SiteInput) normalize() (SiteInput, string, error) {
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" {
 		return in, "", invalid("链接格式不正确")
 	}
-	return in, strings.ToLower(u.Hostname()), nil
+	domain := strings.ToLower(u.Hostname())
+	if in.Links, err = normalizeLinks(in.Links, u, domain); err != nil {
+		return in, "", err
+	}
+	return in, domain, nil
 }
 
 // CreateSite appends a site to its group and registers its domain if the
@@ -56,7 +62,7 @@ func (s *Store) CreateSite(ctx context.Context, userID int64, in SiteInput) (Sit
 	if err != nil {
 		return Site{}, err
 	}
-	site := Site{Title: in.Title, URL: in.URL, Domain: domain}
+	site := Site{Title: in.Title, URL: in.URL, Domain: domain, Links: in.Links}
 	err = s.inTx(ctx, func(tx *sql.Tx) error {
 		if site.GroupID, err = resolveGroup(ctx, tx, userID, in.GroupID); err != nil {
 			return err
@@ -73,8 +79,10 @@ func (s *Store) CreateSite(ctx context.Context, userID int64, in SiteInput) (Sit
 		if err != nil {
 			return err
 		}
-		site.ID, err = res.LastInsertId()
-		return err
+		if site.ID, err = res.LastInsertId(); err != nil {
+			return err
+		}
+		return replaceLinks(ctx, tx, site.ID, site.Links)
 	})
 	return site, err
 }
@@ -111,11 +119,14 @@ func (s *Store) UpdateSite(ctx context.Context, userID, id int64, in SiteInput) 
 		_, err = tx.ExecContext(ctx,
 			`UPDATE sites SET title = ?, url = ?, domain = ?, group_id = ?, position = ? WHERE id = ?`,
 			in.Title, in.URL, domain, target, position, id)
-		return err
+		if err != nil {
+			return err
+		}
+		return replaceLinks(ctx, tx, id, in.Links)
 	})
 }
 
-// DeleteSite removes a site. Its domain and icon are kept.
+// DeleteSite removes a site and its links. Its domain and icon are kept.
 func (s *Store) DeleteSite(ctx context.Context, userID, id int64) error {
 	res, err := s.db.ExecContext(ctx, `DELETE FROM sites WHERE id = ? AND user_id = ?`, id, userID)
 	if err != nil {

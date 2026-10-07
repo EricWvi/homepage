@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"reflect"
 	"slices"
 	"testing"
 )
@@ -165,8 +166,8 @@ func TestCreateSiteNormalizesURLAndRegistersDomain(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := Site{ID: site.ID, Title: "GitHub", URL: "https://GitHub.com/golang", Domain: "github.com", GroupID: defaultGroup(t, s, uid), Position: 1}
-	if site != want {
+	want := Site{ID: site.ID, Title: "GitHub", URL: "https://GitHub.com/golang", Domain: "github.com", GroupID: defaultGroup(t, s, uid), Position: 1, Links: []SiteLink{}}
+	if !reflect.DeepEqual(site, want) {
 		t.Fatalf("site = %+v, want %+v", site, want)
 	}
 	snap := snapshot(t, s, uid)
@@ -368,7 +369,7 @@ func TestUpdateSiteMovesToEndOfNewGroup(t *testing.T) {
 	}
 	snap := snapshot(t, s, uid)
 	last := snap.Sites[len(snap.Sites)-1]
-	if last != (Site{ID: site.ID, Title: "moved", URL: "https://new.com", Domain: "new.com", GroupID: g.ID, Position: 2}) {
+	if !reflect.DeepEqual(last, Site{ID: site.ID, Title: "moved", URL: "https://new.com", Domain: "new.com", GroupID: g.ID, Position: 2, Links: []SiteLink{}}) {
 		t.Fatalf("sites = %+v", snap.Sites)
 	}
 	if len(snap.Domains) != 3 {
@@ -377,4 +378,109 @@ func TestUpdateSiteMovesToEndOfNewGroup(t *testing.T) {
 	if err := s.UpdateSite(ctx, uid, 999, SiteInput{Title: "x", URL: "x.com"}); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("err = %v, want ErrNotFound", err)
 	}
+}
+
+func TestSiteLinksResolveAgainstTheSite(t *testing.T) {
+	s := openTest(t)
+	uid := newUser(t, s, "alice")
+	site, err := s.CreateSite(context.Background(), uid, SiteInput{Title: "GitHub", URL: "github.com", Links: []SiteLink{
+		{URL: "eric/palace"},
+		{URL: "/eric/homepage/pulls", Title: " PRs "},
+		{URL: "GitHub.com/golang/go"},
+		{URL: "https://github.com/a/b/c?tab=readme#top"},
+		{URL: "github.com"},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []SiteLink{
+		{Title: "eric/palace", URL: "https://github.com/eric/palace"},
+		{Title: "PRs", URL: "https://github.com/eric/homepage/pulls"},
+		{Title: "golang/go", URL: "https://GitHub.com/golang/go"},
+		{Title: "b/c", URL: "https://github.com/a/b/c?tab=readme#top"},
+		{Title: "github.com", URL: "https://github.com"},
+	}
+	if !reflect.DeepEqual(site.Links, want) {
+		t.Fatalf("links = %+v\nwant    %+v", site.Links, want)
+	}
+	if got := snapshot(t, s, uid).Sites[0].Links; !reflect.DeepEqual(got, want) {
+		t.Fatalf("snapshot links = %+v", got)
+	}
+}
+
+func TestSiteLinksMustStayOnTheDomain(t *testing.T) {
+	s := openTest(t)
+	uid := newUser(t, s, "alice")
+	ctx := context.Background()
+	for _, link := range []SiteLink{
+		{URL: "https://gitlab.com/eric/palace"},
+		{URL: "https://api.github.com/repos"},
+		{URL: "ftp://github.com/x"},
+		{URL: " "},
+	} {
+		in := SiteInput{Title: "GitHub", URL: "github.com", Links: []SiteLink{{URL: "ok"}, link}}
+		if _, err := s.CreateSite(ctx, uid, in); !errors.Is(err, ErrInvalid) {
+			t.Errorf("%+v: err = %v, want ErrInvalid", link, err)
+		}
+	}
+	if n := len(snapshot(t, s, uid).Sites); n != 0 {
+		t.Fatalf("rejected input created %d sites", n)
+	}
+
+	// Moving the site to another domain must not strand its links.
+	site, _ := s.CreateSite(ctx, uid, SiteInput{Title: "GitHub", URL: "github.com", Links: []SiteLink{{URL: "https://github.com/x"}}})
+	err := s.UpdateSite(ctx, uid, site.ID, SiteInput{Title: "GitLab", URL: "gitlab.com", Links: []SiteLink{{URL: "https://github.com/x"}}})
+	if !errors.Is(err, ErrInvalid) {
+		t.Fatalf("err = %v, want ErrInvalid", err)
+	}
+}
+
+func TestUpdateSiteReplacesLinksAndDeleteRemovesThem(t *testing.T) {
+	s := openTest(t)
+	uid := newUser(t, s, "alice")
+	ctx := context.Background()
+	site, _ := s.CreateSite(ctx, uid, SiteInput{Title: "GitHub", URL: "github.com", Links: []SiteLink{{URL: "a/1"}, {URL: "b/2"}}})
+	other, _ := s.CreateSite(ctx, uid, SiteInput{Title: "Go", URL: "go.dev", Links: []SiteLink{{URL: "doc"}}})
+
+	if err := s.UpdateSite(ctx, uid, site.ID, SiteInput{Title: "GitHub", URL: "github.com", Links: []SiteLink{{URL: "b/2"}, {URL: "c/3"}}}); err != nil {
+		t.Fatal(err)
+	}
+	got := snapshot(t, s, uid).Sites
+	if titles := linkTitles(got[0].Links); !slices.Equal(titles, []string{"b/2", "c/3"}) {
+		t.Fatalf("links = %v", titles)
+	}
+
+	if err := s.DeleteSite(ctx, uid, site.ID); err != nil {
+		t.Fatal(err)
+	}
+	var n int
+	s.db.QueryRow(`SELECT COUNT(*) FROM site_links WHERE site_id = ?`, site.ID).Scan(&n)
+	if n != 0 {
+		t.Fatalf("%d links left behind", n)
+	}
+	if got := snapshot(t, s, uid).Sites; len(got) != 1 || got[0].ID != other.ID || len(got[0].Links) != 1 {
+		t.Fatalf("other site's links changed: %+v", got)
+	}
+}
+
+func TestOtherUsersCannotReplaceLinks(t *testing.T) {
+	s := openTest(t)
+	ctx := context.Background()
+	alice, bob := newUser(t, s, "alice"), newUser(t, s, "bob")
+	site, _ := s.CreateSite(ctx, alice, SiteInput{Title: "GitHub", URL: "github.com", Links: []SiteLink{{URL: "a/1"}}})
+	err := s.UpdateSite(ctx, bob, site.ID, SiteInput{Title: "GitHub", URL: "github.com", Links: []SiteLink{{URL: "evil"}}})
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("err = %v, want ErrNotFound", err)
+	}
+	if got := snapshot(t, s, alice).Sites[0].Links; len(got) != 1 || got[0].Title != "a/1" {
+		t.Fatalf("alice's links = %+v", got)
+	}
+}
+
+func linkTitles(links []SiteLink) []string {
+	titles := make([]string, len(links))
+	for i, l := range links {
+		titles[i] = l.Title
+	}
+	return titles
 }
