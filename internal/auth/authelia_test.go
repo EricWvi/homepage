@@ -47,9 +47,9 @@ const (
 	// containers even if the test process is killed. Keep it in step with
 	// ReaperDefaultImage when upgrading testcontainers-go.
 	ryukImage = "testcontainers/ryuk:0.14.0"
-	authHost      = "auth.homepage.test"
-	publicURL     = "https://homepage.test"
-	password      = "homepage-test-password"
+	authHost  = "auth.homepage.test"
+	publicURL = "https://homepage.test"
+	password  = "homepage-test-password"
 )
 
 var (

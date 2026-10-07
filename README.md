@@ -15,25 +15,27 @@ Safari New Tab 风格的个人主页：纯色柔和背景随系统亮暗切换�
 
 ## 开发
 
-```sh
-echo 'dev_user: "eric"' > config.yaml  # 本地开发跳过 OIDC，所有请求都以该用户登录
-go run ./cmd/homepage                  # 后端 :8080
+常用命令都在 [Taskfile.yml](Taskfile.yml) 里，需要先安装 [Task](https://taskfile.dev)。运行 `task --list` 查看全部任务。
 
-cd frontend
-npm install
-npm run dev                            # Vite 开发服务器，/api、/icons、/auth 代理到 :8080
+```sh
+task install:frontend                  # 安装前端依赖（npm ci）
+echo 'dev_user: "eric"' > config.yaml  # 本地开发跳过 OIDC，所有请求都以该用户登录
+task run:server                        # 后端 :8080
+task run:web                           # Vite 开发服务器，/api、/icons、/auth 代理到 :8080
 ```
 
-Service Worker 只在生产构建中注册。
+`task run:server -- -config other.yaml` 可以把参数透传给 `homepage`。Service Worker 只在生产构建中注册。
 
 ## 测试
 
 ```sh
-go test ./...                               # 单元与接口测试
-go test -tags authelia ./internal/auth      # Authelia 契约测试
+task format          # gofmt 格式化 Go 代码
+task lint            # 前端类型检查、gofmt 检查、go vet
+task test            # lint + Go 单元与接口测试
+task test:contract   # Authelia 契约测试
 ```
 
-契约测试用 testcontainers 启动真实的 Authelia，完整走一遍登录、多用户和退出流程。需要 Docker 或 Podman socket，并且本地已有以下镜像（测试不会拉取镜像）：
+契约测试用 testcontainers 启动真实的 Authelia，完整走一遍登录、多用户和退出流程，不包含在 `task test` 中。需要 Docker 或 Podman socket，并且本地已有以下镜像（测试不会拉取镜像）：
 
 ```sh
 docker pull docker.io/authelia/authelia:4.39.20
@@ -45,10 +47,10 @@ Ryuk 负责在测试进程被中断时清理残留容器。
 ## 构建
 
 ```sh
-./scripts/build.sh                    # 产物：release/homepage
+task build           # 产物：release/homepage
 ```
 
-流程：`npm ci` → TypeScript 类型检查 → Vite 构建 `frontend/dist` → Go 测试 → `CGO_ENABLED=0` 编译并嵌入前端。版本号和 commit 通过 `-ldflags` 注入，`homepage -version` 可查看。
+`task build` 调用 `scripts/build.sh`：`npm ci` → TypeScript 类型检查 → Vite 构建 `frontend/dist` → Go 测试 → `CGO_ENABLED=0` 编译并嵌入前端。版本号和 commit 通过 `-ldflags` 注入，`homepage -version` 可查看。`task clean` 删除 `release/` 和已构建的 `frontend/dist`。
 
 ## 配置
 
