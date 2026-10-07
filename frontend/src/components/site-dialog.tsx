@@ -33,7 +33,7 @@ function SiteForm({ site, onDone }: { site: Site | null; onDone: () => void }) {
 
   const [title, setTitle] = useState(site?.title ?? "");
   const [url, setUrl] = useState(site?.url ?? "");
-  const [groupId, setGroupId] = useState(String(site?.groupId ?? defaultGroup?.id ?? 1));
+  const [groupId, setGroupId] = useState(String(site?.groupId ?? defaultGroup?.id ?? 0));
   const [saving, setSaving] = useState(false);
 
   async function submit(e: FormEvent) {

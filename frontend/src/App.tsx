@@ -1,4 +1,4 @@
-import { FolderTreeIcon, ImagesIcon, PencilIcon, PlusIcon, Trash2Icon } from "lucide-react";
+import { FolderTreeIcon, ImagesIcon, LogOutIcon, PencilIcon, PlusIcon, Trash2Icon } from "lucide-react";
 import { useState } from "react";
 
 import { ConfirmDialog } from "@/components/confirm-dialog";
@@ -19,7 +19,7 @@ import { useSnapshot } from "@/hooks/use-snapshot";
 import { api, type Site } from "@/lib/api";
 
 export function App() {
-  const { snapshot, mutate } = useSnapshot();
+  const { snapshot, signedOut, signIn, signOut, mutate } = useSnapshot();
   const [siteDialog, setSiteDialog] = useState<SiteDialogTarget>(null);
   const [deleting, setDeleting] = useState<Site | null>(null);
   const [groupsOpen, setGroupsOpen] = useState(false);
@@ -28,6 +28,20 @@ export function App() {
   const isEmpty = snapshot !== null && snapshot.sites.length === 0 && snapshot.groups.length <= 1;
   const addSite = () => setSiteDialog({ site: null });
 
+  if (signedOut) {
+    return (
+      <main className="flex min-h-dvh flex-col items-center justify-center gap-4 text-sm text-muted-foreground">
+        <p>已退出登录</p>
+        <Button variant="outline" onClick={signIn}>
+          登录
+        </Button>
+      </main>
+    );
+  }
+  if (!snapshot) return null; // first visit: waiting for the server or the login redirect
+
+  const user = snapshot.user.name || snapshot.user.email;
+
   return (
     <>
       <Toolbar
@@ -35,11 +49,12 @@ export function App() {
           { label: "添加网站", icon: PlusIcon, onClick: addSite },
           { label: "分组管理", icon: FolderTreeIcon, onClick: () => setGroupsOpen(true) },
           { label: "图标管理", icon: ImagesIcon, onClick: () => setDomainsOpen(true) },
+          { label: user ? `退出登录（${user}）` : "退出登录", icon: LogOutIcon, onClick: () => void signOut() },
         ]}
       />
 
       <main className="mx-auto w-full max-w-[780px] px-4 pt-[12vh] pb-24 sm:px-6">
-        {snapshot && !isEmpty && (
+        {!isEmpty && (
           <SiteGrid
             snapshot={snapshot}
             renderTile={(site, tile) => (

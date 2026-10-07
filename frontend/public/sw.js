@@ -5,6 +5,7 @@
 //   /assets/*        cache-first; Vite content-hashes these files
 //   /icons/*         cache-first; icon names are content hashes
 //   /api/*           untouched; the app keeps its own snapshot copy
+//   /auth/*          untouched; login redirects must reach the server
 //
 // Bump CACHE_VERSION only when this file's caching scheme changes.
 const CACHE_VERSION = "v1";
@@ -34,7 +35,7 @@ self.addEventListener("fetch", (event) => {
   const { request } = event;
   if (request.method !== "GET") return;
   const url = new URL(request.url);
-  if (url.origin !== self.location.origin) return;
+  if (url.origin !== self.location.origin || url.pathname.startsWith("/auth/")) return;
 
   if (request.mode === "navigate") {
     event.respondWith(serveShell(event));

@@ -1,29 +1,46 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 
-import { api, type Snapshot } from "@/lib/api";
-import { readCachedSnapshot, writeCachedSnapshot } from "@/lib/cache";
+import { api, ApiError, logout, type Snapshot } from "@/lib/api";
+import { clearUserData, isSignedOut, readCachedSnapshot, setSignedOut, writeCachedSnapshot } from "@/lib/cache";
 
 type SnapshotContext = {
-  /** null only on the very first visit, before the first response. */
+  /** null on the very first visit before the first response, and after signing out. */
   snapshot: Snapshot | null;
+  /** True after the user signed out on this device. */
+  signedOut: boolean;
   /** Runs a mutation and adopts the snapshot it returns. Resolves false on failure. */
   mutate: (action: () => Promise<Snapshot>) => Promise<boolean>;
+  signIn: () => void;
+  signOut: () => Promise<void>;
 };
 
 const Context = createContext<SnapshotContext | null>(null);
 
+const goToLogin = () => window.location.assign("/auth/login");
+
 export function SnapshotProvider({ children }: { children: ReactNode }) {
-  const [snapshot, setSnapshot] = useState<Snapshot | null>(readCachedSnapshot);
+  const [signedOut, setSignedOutState] = useState(isSignedOut);
+  const [snapshot, setSnapshot] = useState<Snapshot | null>(() => (signedOut ? null : readCachedSnapshot()));
 
   const adopt = useCallback((snap: Snapshot) => {
     setSnapshot(snap);
     writeCachedSnapshot(snap);
   }, []);
 
+  // The session is gone (signed out elsewhere, or never existed): drop the
+  // previous user's data, then either sign in or stay on the signed-out screen.
+  const unauthorized = useCallback(() => {
+    setSnapshot(null);
+    void clearUserData();
+    if (isSignedOut()) setSignedOutState(true);
+    else goToLogin();
+  }, []);
+
   // Revalidate in the background on load, when the tab comes back into
   // view and when the network returns.
   useEffect(() => {
+    if (signedOut) return;
     let inflight = false;
     const refresh = () => {
       if (inflight || document.visibilityState !== "visible") return;
@@ -31,7 +48,10 @@ export function SnapshotProvider({ children }: { children: ReactNode }) {
       api
         .snapshot()
         .then(adopt)
-        .catch(() => {}) // offline: keep showing the cached copy
+        .catch((err) => {
+          if (err instanceof ApiError && err.status === 401) unauthorized();
+          // otherwise offline: keep showing the cached copy
+        })
         .finally(() => (inflight = false));
     };
     refresh();
@@ -41,7 +61,7 @@ export function SnapshotProvider({ children }: { children: ReactNode }) {
       document.removeEventListener("visibilitychange", refresh);
       window.removeEventListener("online", refresh);
     };
-  }, [adopt]);
+  }, [adopt, unauthorized, signedOut]);
 
   const mutate = useCallback(
     async (action: () => Promise<Snapshot>) => {
@@ -49,14 +69,39 @@ export function SnapshotProvider({ children }: { children: ReactNode }) {
         adopt(await action());
         return true;
       } catch (err) {
+        if (err instanceof ApiError && err.status === 401) {
+          unauthorized();
+          return false;
+        }
         toast.error(err instanceof Error ? err.message : "操作失败");
         return false;
       }
     },
-    [adopt],
+    [adopt, unauthorized],
   );
 
-  const value = useMemo(() => ({ snapshot, mutate }), [snapshot, mutate]);
+  const signIn = useCallback(() => {
+    setSignedOut(false);
+    goToLogin();
+  }, []);
+
+  const signOut = useCallback(async () => {
+    try {
+      await logout();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "退出登录失败");
+      return;
+    }
+    setSignedOut(true);
+    await clearUserData();
+    setSnapshot(null);
+    setSignedOutState(true);
+  }, []);
+
+  const value = useMemo(
+    () => ({ snapshot, signedOut, mutate, signIn, signOut }),
+    [snapshot, signedOut, mutate, signIn, signOut],
+  );
   return <Context.Provider value={value}>{children}</Context.Provider>;
 }
 

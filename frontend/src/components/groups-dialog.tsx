@@ -46,7 +46,7 @@ export function GroupsDialog({ open, onOpenChange }: GroupsDialogProps) {
         <ul className="grid gap-1.5">
           <li className="flex h-9 items-center justify-between rounded-md bg-muted px-3 text-sm">
             <span>默认分组</span>
-            <span className="text-xs text-muted-foreground">{siteCount(groups.find((g) => g.isDefault)?.id ?? 1)} 个网站</span>
+            <span className="text-xs text-muted-foreground">{siteCount(groups.find((g) => g.isDefault)?.id ?? 0)} 个网站</span>
           </li>
           {custom.map((group, i) => (
             <li key={group.id} className="flex items-center gap-1">

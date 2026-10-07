@@ -21,16 +21,23 @@ export type Domain = {
   siteCount: number;
 };
 
-/** The complete server state. Every mutation responds with a fresh one. */
+export type User = {
+  name: string;
+  email: string;
+};
+
+/** The signed-in user's complete state. Every mutation responds with a fresh one. */
 export type Snapshot = {
   groups: Group[];
   sites: Site[];
   domains: Domain[];
+  user: User;
 };
 
 export type SiteInput = {
   title: string;
   url: string;
+  /** 0 selects the default group. */
   groupId: number;
 };
 
@@ -84,3 +91,14 @@ export const api = {
 };
 
 export const iconUrl = (name: string) => `/icons/${name}`;
+
+/** Ends this browser's session on the server. */
+export async function logout() {
+  let res: Response;
+  try {
+    res = await fetch("/auth/logout", { method: "POST", cache: "no-store" });
+  } catch {
+    throw new ApiError(0, "当前处于离线状态，无法退出登录");
+  }
+  if (!res.ok) throw new ApiError(res.status, "退出登录失败");
+}
