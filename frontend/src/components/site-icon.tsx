@@ -19,7 +19,7 @@ export function SiteIcon({ domain, icon, label, className }: SiteIconProps) {
   return (
     <div
       className={cn(
-        "relative flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl shadow-[0_1px_3px_rgb(0_0_0/0.12)] select-none",
+        "relative flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl shadow-[0_1px_3px_rgb(0_0_0/0.12)] select-none dark:brightness-90",
         showImage ? "bg-tile" : "text-white/95",
         className,
       )}
