@@ -20,8 +20,8 @@ Safari New Tab 风格的个人主页：纯色柔和背景随系统亮暗切换�
 ```sh
 task install:frontend                  # 安装前端依赖（npm ci）
 echo 'dev_user: "eric"' > config.yaml  # 本地开发跳过 OIDC，所有请求都以该用户登录
-task run:server                        # 后端 :8080
-task run:web                           # Vite 开发服务器，/api、/icons、/auth 代理到 :8080
+task run:server                        # 后端 :36749
+task run:web                           # Vite 开发服务器，/api、/icons、/auth 代理到 :36749
 ```
 
 `task run:server -- -config other.yaml` 可以把参数透传给 `homepage`。Service Worker 只在生产构建中注册。
@@ -55,7 +55,7 @@ task build           # 产物：release/homepage
 ## 配置
 
 ```yaml
-listen: ":8080"                          # 监听地址
+listen: ":36749"                          # 监听地址
 data_dir: "./data"                       # SQLite 数据库与图标文件目录
 public_url: "https://home.example.com"   # 浏览器访问的 origin
 oidc:
@@ -73,7 +73,7 @@ oidc:
 推送 `v*` 标签后，GitHub Actions 构建多架构 Docker 镜像并推送到 GHCR。容器内数据目录为 `/app/data`，配置文件需挂载到 `/app/config.yaml`。
 
 ```sh
-docker run -p 8080:8080 \
+docker run -p 36749:36749 \
   -v homepage-data:/app/data \
   -v ./config.yaml:/app/config.yaml:ro \
   -e HOMEPAGE_OIDC_CLIENT_SECRET=... \

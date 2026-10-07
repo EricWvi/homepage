@@ -33,3 +33,4 @@ packages/contracts/.test-dist/
 *.tsbuildinfo
 
 /memories
+config.yaml

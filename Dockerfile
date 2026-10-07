@@ -29,5 +29,5 @@ WORKDIR /app
 COPY --from=build /out/homepage /app/homepage
 COPY --from=build --chown=nonroot:nonroot /out/data /app/data
 VOLUME ["/app/data"]
-EXPOSE 8080
+EXPOSE 36749
 ENTRYPOINT ["/app/homepage", "-config", "/app/config.yaml"]
