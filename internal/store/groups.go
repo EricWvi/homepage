@@ -61,6 +61,18 @@ func (s *Store) RenameGroup(ctx context.Context, userID, id int64, name string) 
 	})
 }
 
+// SetGroupHiddenAtWork chooses whether a custom group is left out in work
+// mode. The default group is always shown.
+func (s *Store) SetGroupHiddenAtWork(ctx context.Context, userID, id int64, hidden bool) error {
+	return s.inTx(ctx, func(tx *sql.Tx) error {
+		if err := requireCustomGroup(ctx, tx, userID, id, "默认分组始终显示"); err != nil {
+			return err
+		}
+		_, err := tx.ExecContext(ctx, `UPDATE site_groups SET hidden_at_work = ? WHERE id = ?`, hidden, id)
+		return err
+	})
+}
+
 // DeleteGroup deletes a custom group and moves its sites, in order, to the
 // end of the default group.
 func (s *Store) DeleteGroup(ctx context.Context, userID, id int64) error {

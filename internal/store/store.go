@@ -31,6 +31,8 @@ type Group struct {
 	Name      string `json:"name"`
 	IsDefault bool   `json:"isDefault"`
 	Position  int    `json:"position"`
+	// HiddenAtWork leaves the group out while the browser is in work mode.
+	HiddenAtWork bool `json:"hiddenAtWork"`
 }
 
 // Site is a saved link.
@@ -121,14 +123,14 @@ func (s *Store) Snapshot(ctx context.Context, userID int64) (Snapshot, error) {
 	snap := Snapshot{Groups: []Group{}, Sites: []Site{}, Domains: []Domain{}, Wallpapers: []Wallpaper{}}
 
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, name, is_default, position FROM site_groups
+		`SELECT id, name, is_default, position, hidden_at_work FROM site_groups
 		 WHERE user_id = ? ORDER BY is_default DESC, position, id`, userID)
 	if err != nil {
 		return snap, err
 	}
 	for rows.Next() {
 		var g Group
-		if err := rows.Scan(&g.ID, &g.Name, &g.IsDefault, &g.Position); err != nil {
+		if err := rows.Scan(&g.ID, &g.Name, &g.IsDefault, &g.Position, &g.HiddenAtWork); err != nil {
 			rows.Close()
 			return snap, err
 		}

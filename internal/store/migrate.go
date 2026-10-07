@@ -93,6 +93,11 @@ var migrations = []string{
 
 	ALTER TABLE users ADD COLUMN wallpaper_id INTEGER REFERENCES wallpapers (id) ON DELETE SET NULL;
 	`,
+	`
+	-- Groups to leave out while the browser is in work mode. The default
+	-- group is always shown.
+	ALTER TABLE site_groups ADD COLUMN hidden_at_work INTEGER NOT NULL DEFAULT 0;
+	`,
 }
 
 func migrate(db *sql.DB) error {

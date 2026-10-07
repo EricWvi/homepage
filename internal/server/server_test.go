@@ -163,6 +163,10 @@ func TestGroups(t *testing.T) {
 	if snap.Groups[2].Name != "renamed" {
 		t.Fatalf("groups = %+v", snap.Groups)
 	}
+	snap = decodeSnapshot(t, do(t, h, "PUT", "/api/groups/"+itoa(a)+"/work", `{"hidden":true}`))
+	if !snap.Groups[2].HiddenAtWork || snap.Groups[1].HiddenAtWork {
+		t.Fatalf("groups = %+v", snap.Groups)
+	}
 	snap = decodeSnapshot(t, do(t, h, "DELETE", "/api/groups/"+itoa(a), ""))
 	if len(snap.Groups) != 2 {
 		t.Fatalf("groups = %+v", snap.Groups)

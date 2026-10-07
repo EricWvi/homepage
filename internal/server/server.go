@@ -66,6 +66,7 @@ func New(st *store.Store, authn *auth.Service, web fs.FS, opts Options) (http.Ha
 	private.HandleFunc("POST /api/groups", s.createGroup)
 	private.HandleFunc("PUT /api/groups/order", s.reorderGroups)
 	private.HandleFunc("PUT /api/groups/{id}", s.renameGroup)
+	private.HandleFunc("PUT /api/groups/{id}/work", s.setGroupHiddenAtWork)
 	private.HandleFunc("DELETE /api/groups/{id}", s.deleteGroup)
 
 	private.HandleFunc("PUT /api/domains/{domain}/icon", s.setDomainIcon)
@@ -146,6 +147,20 @@ func (s *server) renameGroup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.respondSnapshot(w, r, s.store.RenameGroup(r.Context(), userID(r), id, in.Name))
+}
+
+func (s *server) setGroupHiddenAtWork(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(w, r)
+	if !ok {
+		return
+	}
+	var in struct {
+		Hidden bool `json:"hidden"`
+	}
+	if !decode(w, r, &in) {
+		return
+	}
+	s.respondSnapshot(w, r, s.store.SetGroupHiddenAtWork(r.Context(), userID(r), id, in.Hidden))
 }
 
 func (s *server) deleteGroup(w http.ResponseWriter, r *http.Request) {

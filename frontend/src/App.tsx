@@ -30,6 +30,7 @@ import { WallpaperScreen } from "@/components/wallpaper-screen";
 import { WallpapersDialog } from "@/components/wallpapers-dialog";
 import { useIdle } from "@/hooks/use-idle";
 import { useSnapshot } from "@/hooks/use-snapshot";
+import { useWorkMode } from "@/hooks/use-work-mode";
 import { api, type Site } from "@/lib/api";
 import { isDesktop } from "@/lib/platform";
 
@@ -41,6 +42,7 @@ export function App() {
   const [domainsOpen, setDomainsOpen] = useState(false);
   const [wallpapersOpen, setWallpapersOpen] = useState(false);
   const [wallpaperShown, setWallpaperShown] = useState(false);
+  const [workMode] = useWorkMode();
 
   const wallpaperCount = snapshot?.wallpapers.length ?? 0;
   useIdle(
@@ -97,6 +99,7 @@ export function App() {
         {!isEmpty && (
           <SiteGrid
             snapshot={snapshot}
+            workMode={workMode}
             renderTile={(site, tile) => (
               <ContextMenu>
                 <ContextMenuTrigger asChild>

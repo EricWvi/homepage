@@ -5,6 +5,8 @@ import type { Group, Site, Snapshot } from "@/lib/api";
 
 type SiteGridProps = {
   snapshot: Snapshot;
+  /** Leaves out the groups hidden at work. */
+  workMode?: boolean;
   /** Wraps each tile, e.g. to attach a context menu. */
   renderTile?: (site: Site, tile: ReactNode) => ReactNode;
 };
@@ -13,7 +15,7 @@ type SiteGridProps = {
  * The default group comes first with no heading; custom groups follow in a
  * single column, each with its name above its own grid.
  */
-export function SiteGrid({ snapshot, renderTile = (_, tile) => tile }: SiteGridProps) {
+export function SiteGrid({ snapshot, workMode = false, renderTile = (_, tile) => tile }: SiteGridProps) {
   const icons = new Map(snapshot.domains.map((d) => [d.domain, d.icon]));
   const byGroup = new Map<number, Site[]>();
   for (const site of snapshot.sites) {
@@ -33,6 +35,7 @@ export function SiteGrid({ snapshot, renderTile = (_, tile) => tile }: SiteGridP
   return (
     <div className="flex flex-col gap-8">
       {snapshot.groups.map((group: Group) => {
+        if (workMode && group.hiddenAtWork) return null;
         const sites = byGroup.get(group.id) ?? [];
         if (group.isDefault) return sites.length > 0 ? <section key={group.id}>{tiles(sites)}</section> : null;
         return (

@@ -3,6 +3,8 @@ export type Group = {
   name: string;
   isDefault: boolean;
   position: number;
+  /** Left out while this browser is in work mode. Always false for the default group. */
+  hiddenAtWork: boolean;
 };
 
 export type Site = {
@@ -106,6 +108,7 @@ export const api = {
 
   createGroup: (name: string) => request("POST", "/api/groups", { name }),
   renameGroup: (id: number, name: string) => request("PUT", `/api/groups/${id}`, { name }),
+  setGroupHiddenAtWork: (id: number, hidden: boolean) => request("PUT", `/api/groups/${id}/work`, { hidden }),
   deleteGroup: (id: number) => request("DELETE", `/api/groups/${id}`),
   reorderGroups: (ids: number[]) => request("PUT", "/api/groups/order", { ids }),
 

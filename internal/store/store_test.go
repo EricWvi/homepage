@@ -119,6 +119,7 @@ func TestUsersCannotSeeOrTouchEachOthersData(t *testing.T) {
 		"update site":   s.UpdateSite(ctx, bob, site.ID, SiteInput{Title: "x", URL: "x.com"}),
 		"delete site":   s.DeleteSite(ctx, bob, site.ID),
 		"rename group":  s.RenameGroup(ctx, bob, group.ID, "x"),
+		"hide group":    s.SetGroupHiddenAtWork(ctx, bob, group.ID, true),
 		"delete group":  s.DeleteGroup(ctx, bob, group.ID),
 		"clear icon":    s.ClearDomainIcon(ctx, bob, "a.com"),
 		"delete domain": s.DeleteDomain(ctx, bob, "a.com"),
@@ -333,6 +334,26 @@ func TestDefaultGroupIsProtected(t *testing.T) {
 	}
 	if err := s.RenameGroup(ctx, uid, def, "x"); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("rename: %v", err)
+	}
+}
+
+func TestGroupHiddenAtWork(t *testing.T) {
+	s := openTest(t)
+	uid := newUser(t, s, "alice")
+	ctx := context.Background()
+	def := defaultGroup(t, s, uid)
+	g, _ := s.CreateGroup(ctx, uid, "g")
+	if snapshot(t, s, uid).Groups[1].HiddenAtWork {
+		t.Fatal("new group is hidden at work")
+	}
+	if err := s.SetGroupHiddenAtWork(ctx, uid, g.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	if !snapshot(t, s, uid).Groups[1].HiddenAtWork {
+		t.Fatal("group not hidden at work")
+	}
+	if err := s.SetGroupHiddenAtWork(ctx, uid, def, true); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("hiding default group: err = %v, want ErrInvalid", err)
 	}
 }
 

@@ -1,11 +1,14 @@
-import { ArrowDownIcon, ArrowUpIcon, PlusIcon, Trash2Icon } from "lucide-react";
+import { ArrowDownIcon, ArrowUpIcon, EyeIcon, EyeOffIcon, PlusIcon, Trash2Icon } from "lucide-react";
 import { useState, type FormEvent } from "react";
 
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { useSnapshot } from "@/hooks/use-snapshot";
+import { useWorkMode } from "@/hooks/use-work-mode";
 import { api, type Group } from "@/lib/api";
 
 type GroupsDialogProps = {
@@ -17,10 +20,12 @@ export function GroupsDialog({ open, onOpenChange }: GroupsDialogProps) {
   const { snapshot, mutate } = useSnapshot();
   const [newName, setNewName] = useState("");
   const [deleting, setDeleting] = useState<Group | null>(null);
+  const [workMode, setWorkMode] = useWorkMode();
 
   const groups = snapshot?.groups ?? [];
   const custom = groups.filter((g) => !g.isDefault);
   const siteCount = (id: number) => snapshot?.sites.filter((s) => s.groupId === id).length ?? 0;
+  const hiddenCount = custom.filter((g) => g.hiddenAtWork).length;
 
   async function create(e: FormEvent) {
     e.preventDefault();
@@ -43,6 +48,18 @@ export function GroupsDialog({ open, onOpenChange }: GroupsDialogProps) {
           <DialogDescription>默认分组始终在最上方且不显示标题。删除分组后，其中的网站会移到默认分组。</DialogDescription>
         </DialogHeader>
 
+        <div className="flex items-center justify-between gap-4 rounded-md border px-3 py-2.5">
+          <div className="grid gap-1">
+            <Label htmlFor="work-mode">工作模式</Label>
+            <p className="text-xs text-muted-foreground">
+              仅对此浏览器生效，隐藏
+              {hiddenCount > 0 ? ` ${hiddenCount} 个` : "下方标记的"}
+              分组。搜索推荐不受影响。
+            </p>
+          </div>
+          <Switch id="work-mode" checked={workMode} onCheckedChange={setWorkMode} />
+        </div>
+
         <ul className="grid gap-1.5">
           <li className="flex h-9 items-center justify-between rounded-md bg-muted px-3 text-sm">
             <span>默认分组</span>
@@ -52,6 +69,16 @@ export function GroupsDialog({ open, onOpenChange }: GroupsDialogProps) {
             <li key={group.id} className="flex items-center gap-1">
               <GroupNameInput group={group} />
               <span className="w-14 shrink-0 text-right text-xs text-muted-foreground">{siteCount(group.id)} 个</span>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label="工作模式下显示"
+                aria-pressed={!group.hiddenAtWork}
+                title={group.hiddenAtWork ? "工作模式下隐藏" : "工作模式下显示"}
+                onClick={() => void mutate(() => api.setGroupHiddenAtWork(group.id, !group.hiddenAtWork))}
+              >
+                {group.hiddenAtWork ? <EyeOffIcon className="text-muted-foreground" /> : <EyeIcon />}
+              </Button>
               <Button variant="ghost" size="icon-sm" aria-label="上移" disabled={i === 0} onClick={() => move(i, -1)}>
                 <ArrowUpIcon />
               </Button>
