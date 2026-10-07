@@ -64,6 +64,21 @@ func TestLoadDevUserNeedsNoOIDC(t *testing.T) {
 	}
 }
 
+func TestLoadRejectsUnknownKeys(t *testing.T) {
+	// A misplaced dev_user under oidc must not silently fall back to OIDC.
+	_, err := Load(write(t, validOIDC+"  dev_user: eric\n"))
+	if err == nil || !strings.Contains(err.Error(), "dev_user") {
+		t.Fatalf("err = %v, want unknown dev_user error", err)
+	}
+}
+
+func TestLoadEmptyFile(t *testing.T) {
+	_, err := Load(write(t, ""))
+	if err == nil || !strings.Contains(err.Error(), "public_url") {
+		t.Fatalf("err = %v, want public_url error", err)
+	}
+}
+
 func TestLoadRejectsInvalidValues(t *testing.T) {
 	for _, content := range []string{
 		"data_dir: \"\"\ndev_user: eric\n",

@@ -2,8 +2,10 @@
 package config
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"net/url"
 	"os"
@@ -17,7 +19,7 @@ const ClientSecretEnv = "HOMEPAGE_OIDC_CLIENT_SECRET"
 
 // Config is the application configuration.
 type Config struct {
-	// Listen is the HTTP listen address, e.g. ":8080".
+	// Listen is the HTTP listen address, e.g. ":36749".
 	Listen string `yaml:"listen"`
 	// DataDir holds the SQLite database and uploaded icon files.
 	DataDir string `yaml:"data_dir"`
@@ -40,13 +42,14 @@ type OIDC struct {
 // Default returns the configuration used when no file is present.
 func Default() Config {
 	return Config{
-		Listen:  ":8080",
+		Listen:  ":36749",
 		DataDir: "./data",
 	}
 }
 
 // Load reads the YAML file at path on top of the defaults.
-// A missing file is not an error; the defaults are used.
+// A missing file is not an error; the defaults are used. Unknown keys are
+// rejected so a misplaced setting such as dev_user cannot be ignored.
 func Load(path string) (Config, error) {
 	cfg := Default()
 	raw, err := os.ReadFile(path)
@@ -55,7 +58,9 @@ func Load(path string) (Config, error) {
 	case err != nil:
 		return cfg, fmt.Errorf("read config: %w", err)
 	default:
-		if err := yaml.Unmarshal(raw, &cfg); err != nil {
+		dec := yaml.NewDecoder(bytes.NewReader(raw))
+		dec.KnownFields(true)
+		if err := dec.Decode(&cfg); err != nil && !errors.Is(err, io.EOF) {
 			return cfg, fmt.Errorf("parse config %s: %w", path, err)
 		}
 	}
