@@ -1,0 +1,4 @@
+# HTTP listen address
+listen: ":8080"
+# Directory for the SQLite database and uploaded icons
+data_dir: "./data"
