@@ -1,3 +1,5 @@
+import { useState } from "react";
+
 import {
   AlertDialog,
   AlertDialogAction,
@@ -19,12 +21,17 @@ type ConfirmDialogProps = {
 };
 
 export function ConfirmDialog({ open, title, description, confirmLabel = "删除", onConfirm, onCancel }: ConfirmDialogProps) {
+  // Callers derive the copy from state they clear on close; keep the last open
+  // copy so the text doesn't blank out while the dialog animates away.
+  const [shown, setShown] = useState({ title, description });
+  if (open && (shown.title !== title || shown.description !== description)) setShown({ title, description });
+
   return (
     <AlertDialog open={open} onOpenChange={(next) => !next && onCancel()}>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>{title}</AlertDialogTitle>
-          <AlertDialogDescription>{description}</AlertDialogDescription>
+          <AlertDialogTitle>{shown.title}</AlertDialogTitle>
+          <AlertDialogDescription>{shown.description}</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel>取消</AlertDialogCancel>

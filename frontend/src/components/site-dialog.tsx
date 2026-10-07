@@ -19,10 +19,15 @@ type SiteDialogProps = {
 };
 
 export function SiteDialog({ target, onClose }: SiteDialogProps) {
+  // Keep rendering the last target while the dialog animates out, so the
+  // content doesn't vanish and collapse the dialog mid-animation.
+  const [shown, setShown] = useState(target);
+  if (target !== null && target !== shown) setShown(target);
+
   return (
     <Dialog open={target !== null} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="sm:max-w-lg">
-        {target && <SiteForm key={target.site?.id ?? "new"} site={target.site} onDone={onClose} />}
+        {shown && <SiteForm key={shown.site?.id ?? "new"} site={shown.site} onDone={onClose} />}
       </DialogContent>
     </Dialog>
   );
