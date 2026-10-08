@@ -16,7 +16,7 @@ const ASSETS = `assets-${CACHE_VERSION}`;
 const ICONS = `icons-${CACHE_VERSION}`;
 const WALLPAPERS = `wallpapers-${CACHE_VERSION}`;
 const SHELL_URL = "/";
-const STATIC_FILES = ["/favicon.svg"];
+const STATIC_FILES = ["/favicon.svg", "/apple-touch-icon.png"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(updateShell().then(() => self.skipWaiting()));

@@ -1,6 +1,6 @@
 #!/bin/sh
 # Fails unless the Go build would embed a complete frontend build:
-# index.html, the service worker, the favicon and every asset index.html
+# index.html, the service worker, the icons and every asset index.html
 # references. Run after the frontend build and before go build.
 set -eu
 cd "$(dirname "$0")/.."
@@ -11,7 +11,7 @@ need() {
   printf '%s\n' "$embedded" | grep -qxF "frontend/dist/$1" || missing="$missing $1"
 }
 
-for f in index.html sw.js favicon.svg; do need "$f"; done
+for f in index.html sw.js favicon.svg apple-touch-icon.png; do need "$f"; done
 assets=$(grep -oE '(src|href)="/assets/[^"]+"' frontend/dist/index.html 2>/dev/null |
   sed -E 's/^(src|href)="\///; s/"$//' || true)
 [ -n "$assets" ] || missing="$missing assets/*(none referenced by index.html)"

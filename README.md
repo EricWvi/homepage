@@ -53,7 +53,7 @@ Ryuk 负责在测试进程被中断时清理残留容器。
 task build           # 产物：release/homepage
 ```
 
-`task build` 调用 `scripts/build.sh`：`npm ci` → TypeScript 类型检查 → Vite 构建 `frontend/dist` → 嵌入检查 → Go 测试 → `CGO_ENABLED=0` 编译并嵌入前端。嵌入检查（`scripts/check-embed.sh`）用 `go list` 确认 `index.html`、`sw.js`、`favicon.svg` 以及 `index.html` 引用的全部打包资源都会被嵌入，缺失即构建失败，因此产物运行时不需要任何前端文件。版本号和 commit 通过 `-ldflags` 注入，`homepage -version` 可查看。`task clean` 删除 `release/` 和已构建的 `frontend/dist`。
+`task build` 调用 `scripts/build.sh`：`npm ci` → TypeScript 类型检查 → Vite 构建 `frontend/dist` → 嵌入检查 → Go 测试 → `CGO_ENABLED=0` 编译并嵌入前端。嵌入检查（`scripts/check-embed.sh`）用 `go list` 确认 `index.html`、`sw.js`、`favicon.svg`、`apple-touch-icon.png` 以及 `index.html` 引用的全部打包资源都会被嵌入，缺失即构建失败，因此产物运行时不需要任何前端文件。版本号和 commit 通过 `-ldflags` 注入，`homepage -version` 可查看。`task clean` 删除 `release/` 和已构建的 `frontend/dist`。
 
 ## 配置
 
