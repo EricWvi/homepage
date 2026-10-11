@@ -4,6 +4,7 @@ import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as Reac
 import { SiteIcon } from "@/components/site-icon";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useSnapshot } from "@/hooks/use-snapshot";
+import { typedAddress } from "@/lib/address";
 import { searchEngines, searchUrl } from "@/lib/search-engines";
 import { suggest, suggestionDetail } from "@/lib/suggest";
 import { cn } from "@/lib/utils";
@@ -17,7 +18,8 @@ const interactive = "a, button, input, textarea, select, [contenteditable], [rol
  * the last engine used is not remembered.
  *
  * While typing, matching sites and site links are listed below. Tab or the
- * arrow keys pick one and Enter opens it; with none picked, Enter searches.
+ * arrow keys pick one and Enter opens it; with none picked, Enter opens a
+ * typed web address like Chrome's address bar, and searches anything else.
  * Tab switches the engine only while no suggestions are shown.
  */
 export function SearchBox() {
@@ -67,8 +69,9 @@ export function SearchBox() {
     } else if (e.key === "Enter") {
       e.preventDefault();
       const pick = showList ? suggestions[active] : undefined;
+      const text = query.trim();
       if (pick) window.location.assign(pick.url);
-      else if (query.trim()) window.location.assign(searchUrl(engine, query.trim()));
+      else if (text) window.location.assign(typedAddress(text) ?? searchUrl(engine, text));
     } else if (e.key === "Escape") {
       e.currentTarget.blur();
     }
