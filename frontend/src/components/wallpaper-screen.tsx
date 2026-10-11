@@ -99,6 +99,17 @@ export function WallpaperScreen({
     };
   }, []);
 
+  // The page scrolls on the root element, which is also what goes fullscreen:
+  // lock it so no scrollbar shows over the wallpaper and the wheel does nothing.
+  useEffect(() => {
+    const root = document.documentElement;
+    const previous = root.style.overflow;
+    root.style.overflow = "hidden";
+    return () => {
+      root.style.overflow = previous;
+    };
+  }, []);
+
   // Hide the pointer once it has rested for a few seconds.
   useEffect(() => {
     let timer = window.setTimeout(() => setCursorHidden(true), CURSOR_HIDE_MS);
