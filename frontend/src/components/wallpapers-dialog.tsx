@@ -1,4 +1,4 @@
-import { CheckIcon, ImagePlusIcon, XIcon } from "lucide-react";
+import { CheckIcon, DownloadIcon, ImagePlusIcon, XIcon } from "lucide-react";
 import { useRef, useState } from "react";
 
 import { ConfirmDialog } from "@/components/confirm-dialog";
@@ -69,6 +69,16 @@ export function WallpapersDialog({ open, onOpenChange }: { open: boolean; onOpen
                     <CheckIcon className="size-3.5" />
                   </span>
                 )}
+                <Button
+                  asChild
+                  variant="secondary"
+                  size="icon-sm"
+                  className="absolute top-1.5 right-10 size-7 rounded-full opacity-0 shadow-sm transition-opacity group-focus-within:opacity-100 group-hover:opacity-100"
+                >
+                  <a href={wallpaperUrl(w.file)} download aria-label="下载原图" title="下载原图">
+                    <DownloadIcon />
+                  </a>
+                </Button>
                 <Button
                   variant="secondary"
                   size="icon-sm"
